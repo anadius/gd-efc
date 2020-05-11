@@ -45,7 +45,10 @@ function success(data, status) {
 async function getFolderInfo(data, fields) {
   const folder = await decode(data.folder);
   const response = await fetch(
-    `${API_URL}?q="${folder}"+in+parents&fields=files(${fields})`,
+    `${API_URL}?q="${folder}"+in+parents`
+    + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.shortcut'"
+    + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.folder'"
+    + `&fields=files(${fields})`,
     {headers: {"Authorization": `Bearer ${data.auth}`}}
   );
   return await response.json();

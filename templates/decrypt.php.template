@@ -35,7 +35,10 @@ function success($data, $status = 200) {
 function getFolderInfo($data, $fields) {
     global $API_URL;
     $folder = decode($data['folder']);
-    $ch = curl_init($API_URL . '?q="' . $folder . '"+in+parents&fields=files(' . $fields . ')');
+    $ch = curl_init($API_URL . '?q="' . $folder . '"+in+parents'
+        . '+and+mimeType+!%3D+"application%2Fvnd.google-apps.shortcut"'
+        . '+and+mimeType+!%3D+"application%2Fvnd.google-apps.folder"'
+        . '&fields=files(' . $fields . ')');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
     curl_setopt($ch, CURLOPT_HEADER, FALSE);
     curl_setopt($ch, CURLOPT_HTTPHEADER, array('Authorization: Bearer ' . $data['auth']));
