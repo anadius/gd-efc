@@ -252,15 +252,41 @@ $("#check_all").change(function() {
   getCheckboxes().prop("checked", this.checked);
 });
 
+(() => {
+  const keyCharAt = (key, i) => {
+    return key.charCodeAt(i % key.length);
+  };
+
+  const xor = (data, key) => {
+    const xored = new Uint8Array(data.length);
+    for(let i=0; i<data.length; ++i){
+      xored[i] = data[i] ^ keyCharAt(key, i);
+    }
+    return xored;
+  };
+
+  const xor_encrypt = (data, key) => {
+    const enc = new TextEncoder();
+    return b64.bytesToBase64(xor(enc.encode(data), key));
+  };
+
+  const xor_decrypt = (data, key) => {
+    const dec = new TextDecoder();
+    return dec.decode(xor(b64.base64ToBytes(data), key));
+  };
+  
+  this.xor_decrypt = xor_decrypt;
+  this.xor_encrypt = xor_encrypt;
+})();
 
 (async () => {
   const key = "6dZuyh/Wp39Xry9Y6N8LacQrWTP3fQ7aP9kHFVxztgc=";
-  const u = await decrypt("DW72/vSPQ3aXQr9a+hNbvW5kH4fMQwiHeAq+p1WAe/EpbSc5D6HxIDK/52LilAs+JNMmsBQtoqoY2djn+UhAMRWDfg==", key);
-  const p = await decrypt("J4B26q328BP7xkew6yT5EVcL6qbYeLYa38jmmiQ94zXwJhWsxb05Yjbi7WP4jOCBHBFv6A==", key);
+  const u = xor_decrypt("BFRoR09cF2ZFBQ1sXBhJKUVgXyMOBD0XIic1QQU+WRU1Vx9mJTkV", key);
+  const p = xor_decrypt("blAARhoJFy8WZH06Qy9WNhsIAS1WOSk4", key);
   const r = "urn:ietf:wg:oauth:2.0:oob";
   let refreshToken = localStorage.getItem("refresh_token");
   if(refreshToken !== null) {
-    refreshToken = await decrypt(refreshToken, key);
+    refreshToken = xor_decrypt(refreshToken, key);
   }
   let accessToken = null;
   let expires, files, encryptedID, decryptServers, options, free;
@@ -315,7 +341,7 @@ $("#check_all").change(function() {
 
       if(refresh !== true) {
         refreshToken = data.refresh_token;
-        localStorage.setItem("refresh_token", await encrypt(refreshToken, key));
+        localStorage.setItem("refresh_token", xor_encrypt(refreshToken, key));
       }
     }
     else {
