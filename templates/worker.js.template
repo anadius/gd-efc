@@ -17,6 +17,7 @@ const DEFAULT_HEADERS = Object.assign({
 }, CORS_HEADERS);
 const API_URL = "https://www.googleapis.com/drive/v3/files";
 const FIELDS_COMMON = "size,originalFilename,md5Checksum";
+const VERSION = 1;
 
 addEventListener("fetch", event => {
   event.respondWith(handleRequest(event.request))
@@ -24,7 +25,7 @@ addEventListener("fetch", event => {
 
 function fail(reason, status) {
   return new Response(
-    JSON.stringify({status: "error", reason: reason}),
+    JSON.stringify({status: "error", reason: reason, version: VERSION}),
     {
       status: status || 400,
       headers: DEFAULT_HEADERS
@@ -34,7 +35,7 @@ function fail(reason, status) {
 
 function success(data, status) {
   return new Response(
-    JSON.stringify({status: "ok", data: data}),
+    JSON.stringify({status: "ok", data: data, version: VERSION}),
     {
       status: status || 200,
       headers: DEFAULT_HEADERS

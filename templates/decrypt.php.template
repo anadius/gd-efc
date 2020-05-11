@@ -19,16 +19,19 @@ function decode($encoded) {
 
 $API_URL = 'https://www.googleapis.com/drive/v3/files';
 $FIELDS_COMMON = 'size,originalFilename,md5Checksum';
+$VERSION = 1;
 
 function fail($reason, $status = 400) {
+    global $VERSION;
     http_response_code($status);
-    echo json_encode(array('status' => 'error', 'reason' => $reason));
+    echo json_encode(array('status' => 'error', 'reason' => $reason, 'version' => $VERSION));
     exit;
 }
 
 function success($data, $status = 200) {
+    global $VERSION;
     http_response_code($status);
-    echo json_encode(array('status' => 'ok', 'data' => $data));
+    echo json_encode(array('status' => 'ok', 'data' => $data, 'version' => $VERSION));
     exit;
 }
 
