@@ -85,6 +85,8 @@ const getFile = async path => {
   return (await fetch(path)).text();
 };
 
+const addSection = (name, content) => `<h3>${name}</h3><pre>${content}</pre>`;
+
 const parseForm = async () => {
   const ALLOW_SITES = "*";
 
@@ -112,6 +114,15 @@ const parseForm = async () => {
     throw Error(`Invalid encryption key; ${e.message}`);
   }
 
+  const OPTIONS = [];
+  if(decryptServers.size > 0) {
+    OPTIONS.push(addSection("Decryption servers", Array.from(decryptServers).join("\n")));
+  }
+  if(decryptServerLists.size > 0) {
+    OPTIONS.push(addSection("Decryption server lists", Array.from(decryptServerLists).join("\n")));
+  }
+  const OPTIONS_USED = `<div class="card-body">${OPTIONS.join("")}</div>`;
+
   const zip = new JSZip();
   zip.file("key.txt", KEY);
 
@@ -122,6 +133,7 @@ const parseForm = async () => {
     .replace("{ENCRYPT_FUNCTION}", ENCRYPT_FUNCTION_STATIC)
     .replace("{COMMON_JS}", COMMON_JS)
     .replace("{KEY}", KEY)
+    .replace("{OPTIONS_USED}", OPTIONS_USED)
     .replace("{ENCODED_PREFIX}", ENCODED_PREFIX)
   );
 
@@ -135,6 +147,7 @@ const parseForm = async () => {
         .replace("{ENCRYPT_POST}", ENCRYPT_POST)
         .replace("{ENCRYPT_HTML}", ENCRYPT_HTML.replace(/\\/g, "\\\\"))
         .replace("{ENCRYPT_FUNCTION}", ENCRYPT_FUNCTION_SERVER)
+        .replace("{OPTIONS_USED}", "")
         .replace("{ENCODED_PREFIX}", ENCODED_PREFIX);
     }
     else {
@@ -171,6 +184,7 @@ RewriteRule "^clone$" "decrypt.php?page=clone"
         .replace("{KEY}", KEY)
         .replace("{ENCRYPT_HTML}", ENCRYPT_HTML)
         .replace("{ENCRYPT_FUNCTION}", ENCRYPT_FUNCTION_SERVER)
+        .replace("{OPTIONS_USED}", "")
         .replace("{ENCODED_PREFIX}", ENCODED_PREFIX)
       );
     }
