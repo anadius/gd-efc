@@ -1,0 +1,148 @@
+<?php
+
+function decrypt($base64IvCiphertext, $base64Key) {
+    $ivCiphertext = base64_decode($base64IvCiphertext);
+    $key = base64_decode($base64Key);
+    $method = 'aes-256-gcm';
+    $iv = substr($ivCiphertext, 0, 12);
+    $tag = substr($ivCiphertext, -16);
+    $ciphertext = substr($ivCiphertext, 12, -16);
+
+    return openssl_decrypt($ciphertext, $method, $key, OPENSSL_RAW_DATA, $iv, $tag);
+}
+
+function decode($encoded) {
+    return decrypt($encoded, '{KEY}');
+}
+
+/* END OF DECRYPT FUNCTIONS */
+
+$API_URL = 'https://www.googleapis.com/drive/v3/files';
+$FIELDS_COMMON = 'size,originalFilename,md5Checksum';
+
+function fail($reason, $status = 400) {
+    http_response_code($status);
+    echo json_encode(array('status' => 'error', 'reason' => $reason));
+    exit;
+}
+
+function success($data, $status = 200) {
+    http_response_code($status);
+    echo json_encode(array('status' => 'ok', 'data' => $data));
+    exit;
+}
+
+function getFolderInfo($data, $fields) {
+    global $API_URL;
+    $folder = decode($data['folder']);
+    $ch = curl_init($API_URL . '?q="' . $folder . '"+in+parents&fields=files(' . $fields . ')');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+    curl_setopt($ch, CURLOPT_HEADER, FALSE);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, array('Authorization: Bearer ' . $data['auth']));
+    $response = curl_exec($ch);
+    curl_close($ch);
+    return json_decode($response, TRUE);
+}
+
+$info = function($data) {
+    global $FIELDS_COMMON;
+    return getFolderInfo($data, 'mimeType,' . $FIELDS_COMMON);
+};
+
+function cloneOne($auth, $fileId) {
+    global $API_URL;
+    $ch = curl_init($API_URL . '/' . $fileId . '/copy');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+    curl_setopt($ch, CURLOPT_HEADER, FALSE);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+        'Authorization: Bearer ' . $auth,
+        'Content-Type: application/json'
+    ));
+    curl_setopt($ch, CURLOPT_POST, TRUE);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, '{"parents":["root"],"appProperties":{"createdWithDdEfc":1}}');
+    $response = curl_exec($ch);
+    curl_close($ch);
+    return json_decode($response, TRUE);
+}
+
+$clone = function($data) {
+    global $FIELDS_COMMON;
+    $folderInfo = getFolderInfo($data, 'id,' . $FIELDS_COMMON);
+    $result = array();
+    foreach($folderInfo['files'] as $fileInfo) {
+        $found = FALSE;
+        for($i=0; $i<count($data['files']); ++$i) {
+            $requestedFileInfo = $data['files'][$i];
+            if($fileInfo['originalFilename'] === $requestedFileInfo['originalFilename'] &&
+               $fileInfo['md5Checksum'] === $requestedFileInfo['md5Checksum'] &&
+               $fileInfo['size'] === $requestedFileInfo['size']) {
+                array_splice($data['files'], $i, 1);
+                $found = TRUE;
+                break;
+            }
+        }
+
+        if($found) {
+            $cloneResult = cloneOne($data['auth'], $fileInfo['id']);
+            unset($fileInfo['id']);
+            array_push($result, array(
+                'info' => $fileInfo,
+                'status' => 'ok',
+                'data' => $cloneResult
+            ));
+        }
+    }
+
+    if(count($data['files']) > 0) {
+        foreach($data['files'] as $requestedFileInfo) {
+            array_push($result, array(
+                'info' => $requestedFileInfo,
+                'status' => 'error',
+                'reason' => 'File not found'
+            ));
+        }
+    }
+
+    return $result;
+};
+
+$method = $_SERVER['REQUEST_METHOD'];
+
+header('Access-Control-Allow-Origin: {ALLOW_SITES}');
+header('Access-Control-Allow-Methods: POST');
+
+if($method === 'OPTIONS') {
+    exit;
+}
+
+header('Content-Type: application/json');
+
+if($method !== 'POST') {
+    fail('Method not allowed', 405);
+}
+
+$page = isset($_GET['page']) ? $_GET['page'] : '';
+
+if($page === 'info') {
+    $parser = $info;
+}
+elseif($page === 'clone') {
+    $parser = $clone;
+}
+else {
+    fail('Page not found', 404);
+}
+
+$requestData = json_decode(file_get_contents('php://input'), TRUE);
+if($requestData === NULL) {
+    fail('Invalid json data');
+}
+
+try {
+    success($parser($requestData));
+}
+catch(Exception $e) {
+    fail($e.getMessage());
+}
+
+?>

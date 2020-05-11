@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <!-- Bootstrap CSS -->
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
+  <title>Google Drive - encrypted folder copy</title>
+</head>
+<body>
+  <nav class="navbar navbar-expand navbar-dark bg-primary">
+    <div class="container">
+      <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <div class="collapse navbar-collapse" id="navbarSupportedContent">
+        <ul class="navbar-nav mr-auto">
+          <li class="nav-item active">
+            <a class="nav-link" href="index.html">Decrypt links</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="build.html">How to encrypt links</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container"><div class="row"><div class="col">
+    <div class="alert alert-danger mt-4">
+      Always use a dummy account for security reasons.
+    </div>
+    <div class="card my-4">
+      <div class="card-body">
+
+        <div id="authenticate" style="display: none;">
+          <div class="form-row align-items-center">
+            <div class="col-3 col-md-2">
+              <button id="get_auth" class="btn btn-primary btn-block">Get auth</button>
+            </div>
+            <div class="col">
+              <input id="auth_input" type="text" class="form-control" placeholder="Paste auth code here">
+            </div>
+            <div class="col-3 col-md-2">
+              <button id="auth_continue" class="btn btn-primary btn-block">Continue</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="user_info" style="display: none;">
+          <div class="form-row align-items-center">
+            <div id="user_name" class="col-12 col-md-auto"></div>
+            <div id="quota" class="col text-md-center"></div>
+            <div class="col-3 col-md-2">
+              <button id="log_out" class="btn btn-danger btn-block">Log out</button>
+            </div>
+          </div>
+          <hr>
+          <div class="form-row align-items-center">
+            <div class="col">
+              <input id="folder_input" type="text" class="form-control" placeholder="Encrypted folder ID">
+            </div>
+            <div class="col-3 col-md-2">
+              <button id="folder_load" class="btn btn-primary btn-block">Load</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="file_list" style="display: none;">
+          <hr>
+          <div class="form-row align-items-center">
+            <div class="col-12 col-md pb-2 pb-md-0 text-center">
+              Found <b id="files_count">0</b> files. Total weight <b id="files_size">0B</b>.
+            </div>
+            <div class="col-3 col-md-2 offset-2 offset-md-0 order-md-first">
+              <button id="download_md5" class="btn btn-primary btn-block">.MD5</button>
+            </div>
+            <div class="col-3 col-md-2 offset-2 offset-md-0">
+              <button id="copy_files" class="btn btn-primary btn-block">Copy</button>
+            </div>
+          </div>
+            <table class="table table-hover mt-3 mb-0">
+              <thead>
+                <tr>
+                  <th scope="col" class="col">
+                    <div class="custom-control custom-checkbox custom-control-inline" style="margin-right: -9px">
+                      <input type="checkbox" class="custom-control-input" id="check_all">
+                      <label class="custom-control-label" for="check_all">&nbsp;</label>
+                    </div>
+                    Name
+                  </th>
+                  <th scope="col" class="text-right">Size</th>
+                </tr>
+              </thead>
+              <tbody class="d-none">
+                <tr id="row_template">
+                  <td>
+                    <div class="custom-control custom-checkbox">
+                      <input type="checkbox" class="custom-control-input">
+                      <label class="filename custom-control-label">TEMPLATE NAME</label>
+                    </div>
+                  </td>
+                  <td class="filesize text-right">TEMPLATE SIZE</td>
+                </tr>
+              </tbody>
+              <tbody id="files"></tbody>
+            </table>
+        </div>
+
+      </div>
+    </div>
+  </div></div></div>
+
+<div class="modal fade" id="error_modal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Modal title</h5>
+      </div>
+      <div class="modal-body">
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="loading_modal" tabindex="-1" role="dialog" aria-hidden="true" data-backdrop="static" data-keyboard="false">
+  <div class="modal-dialog" role="document">
+    <div class="modal-content">
+      <div class="modal-header alert-primary">
+        <h5 class="modal-title">Please wait</h5>
+      </div>
+      <div class="modal-body"></div>
+    </div>
+  </div>
+</div>
+
+  <!-- jQuery first, then Popper.js, then Bootstrap JS -->
+  <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.3/umd/popper.min.js" integrity="sha384-ZMP7rVo3mIykV+2+9J3UJ46jBk0WLaUAdn689aCwoqbBJiSnjAK/l8WvCWPIPm49" crossorigin="anonymous"></script>
+  <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/js/bootstrap.min.js" integrity="sha384-ChfqqxuZUCnJSK3+MXmPNIyE6ZbWh2IMqE241rYiqJxyMiZ6OW/JmZQ5stwEULTy" crossorigin="anonymous"></script>
+  <script src="common.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

@@ -1,0 +1,150 @@
+{COMMON_JS}
+
+const KEY = "{KEY}";
+
+async function decode(encoded) {
+  return decrypt(encoded, KEY);
+}
+
+/* END OF DECRYPT FUNCTIONS */
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "{ALLOW_SITES}",
+  "Access-Control-Allow-Methods": "POST"
+};
+const DEFAULT_HEADERS = Object.assign({
+  "Content-Type": "application/json"
+}, CORS_HEADERS);
+const API_URL = "https://www.googleapis.com/drive/v3/files";
+const FIELDS_COMMON = "size,originalFilename,md5Checksum";
+
+addEventListener("fetch", event => {
+  event.respondWith(handleRequest(event.request))
+});
+
+function fail(reason, status) {
+  return new Response(
+    JSON.stringify({status: "error", reason: reason}),
+    {
+      status: status || 400,
+      headers: DEFAULT_HEADERS
+    }
+  );
+}
+
+function success(data, status) {
+  return new Response(
+    JSON.stringify({status: "ok", data: data}),
+    {
+      status: status || 200,
+      headers: DEFAULT_HEADERS
+    }
+  );
+}
+
+async function getFolderInfo(data, fields) {
+  const folder = await decode(data.folder);
+  const response = await fetch(
+    `${API_URL}?q="${folder}"+in+parents&fields=files(${fields})`,
+    {headers: {"Authorization": `Bearer ${data.auth}`}}
+  );
+  return await response.json();
+}
+
+async function info(data) {
+  return await getFolderInfo(data, `mimeType,${FIELDS_COMMON}`);
+}
+
+async function cloneOne(auth, fileId) {
+  const response = await fetch(
+    `${API_URL}/${fileId}/copy`,
+    {
+      headers: {
+        "Authorization": `Bearer ${auth}`,
+        "Content-Type": "application/json"
+      },
+      method: "POST",
+      body: '{"parents":["root"],"appProperties":{"createdWithDdEfc":1}}'
+    }
+  );
+  return await response.json();
+}
+
+async function clone(data) {
+  const folderInfo = await getFolderInfo(data, `id,${FIELDS_COMMON}`);
+  const result = [];
+  for(const fileInfo of folderInfo.files) {
+    let found = false;
+    for(let i=0; i<data.files.length; ++i) {
+      const requestedFileInfo = data.files[i];
+      if(fileInfo.originalFilename === requestedFileInfo.originalFilename &&
+         fileInfo.md5Checksum === requestedFileInfo.md5Checksum &&
+         fileInfo.size === requestedFileInfo.size) {
+        data.files.splice(i, 1);
+        found = true;
+        break;
+      }
+    }
+
+    if(found) {
+      const cloneResult = await cloneOne(data.auth, fileInfo.id);
+      delete fileInfo.id;
+      result.push({
+        info: fileInfo,
+        status: "ok",
+        data: cloneResult
+      });
+    }
+  }
+
+  if(data.files.length > 0) {
+    for(const requestedFileInfo of data.files) {
+      result.push({
+        info: requestedFileInfo,
+        status: "error",
+        reason: "File not found"
+      });
+    }
+  }
+
+  return result;
+}
+{ENCRYPT_PARSER}
+/**
+ * Respond to the request
+ * @param {Request} request
+ */
+async function handleRequest(request) {
+  if(request.method === "OPTIONS") {
+    return new Response(null, {status: 200, headers: CORS_HEADERS});
+  }{ENCRYPT_GET}
+  else if(request.method !== "POST") {
+    return fail("Method not allowed", 405);
+  }
+
+  let parser;
+  if(request.url.endsWith("/info")) {
+    parser = info;
+  }
+  else if(request.url.endsWith("/clone")) {
+    parser = clone;
+  }{ENCRYPT_POST}
+  else {
+    return fail("Page not found", 404);
+  }
+
+  let requestData;
+  try {
+    requestData = await request.json();
+  }
+  catch {
+    return fail("Invalid json data");
+  }
+
+  try {
+    return success(await parser(requestData));
+  }
+  catch(e) {
+    return fail(e.toString());
+  }
+}
