@@ -5,6 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
   <!-- Bootstrap CSS -->
   <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
+  <style>
+html {
+  position: relative;
+  min-height: 100%;
+}
+body {
+  /* Margin bottom by footer height */
+  margin-bottom: 60px;
+}
+.footer {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  /* Set the fixed height of the footer here */
+  height: 60px;
+  line-height: 60px; /* Vertically center the text there */
+  background-color: #f5f5f5;
+}
+  </style>
   <title>Google Drive - encrypted folder copy</title>
 </head>
 <body>
@@ -17,7 +36,7 @@
       <div class="collapse navbar-collapse" id="navbarSupportedContent">
         <ul class="navbar-nav mr-auto">
           <li class="nav-item active">
-            <a class="nav-link" href="index.html">Decrypt links</a>
+            <a class="nav-link" href="./">Decrypt links</a>
           </li>
           <li class="nav-item">
             <a class="nav-link" href="build.html">How to encrypt links</a>
@@ -111,6 +130,12 @@
       </div>
     </div>
   </div></div></div>
+
+  <footer class="footer">
+    <div class="container">
+      <span class="text-muted">made by <a href="https://www.reddit.com/u/anadius1">anadius</a></span>
+    </div>
+  </footer>
 
 <div class="modal fade" id="error_modal" tabindex="-1" role="dialog" aria-hidden="true">
   <div class="modal-dialog" role="document">
