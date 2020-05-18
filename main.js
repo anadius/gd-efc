@@ -867,8 +867,6 @@ async function onDestinationSet(event) {
   reloadFolder();
 }
 
-    const links = [];
-
 async function onShare(files) {
   showLoading();
   const links = [];
