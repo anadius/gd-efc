@@ -17,7 +17,7 @@ const DEFAULT_HEADERS = Object.assign({
 }, CORS_HEADERS);
 const API_URL = "https://www.googleapis.com/drive/v3/files";
 const FIELDS_COMMON = "size,originalFilename,md5Checksum";
-const VERSION = 1;
+const VERSION = 2;
 
 addEventListener("fetch", event => {
   event.respondWith(handleRequest(event.request))
@@ -49,26 +49,40 @@ async function getFolderInfo(data, fields) {
     `${API_URL}?q="${folder}"+in+parents`
     + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.shortcut'"
     + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.folder'"
-    + `&fields=files(${fields})`,
+    + `&fields=files(${fields})&orderBy=name_natural`,
     {headers: {"Authorization": `Bearer ${data.auth}`}}
   );
-  return await response.json();
+  const data1 = await response.json();
+
+  const response2 = await fetch(
+    `${API_URL}/${folder}?fields=name`,
+    {headers: {"Authorization": `Bearer ${data.auth}`}}
+  )
+  const data2 = await response2.json();
+
+  data1.name = data2.name;
+  return data1;
 }
 
 async function info(data) {
   return await getFolderInfo(data, `mimeType,${FIELDS_COMMON}`);
 }
 
-async function cloneOne(auth, fileId) {
+async function cloneOne(auth, fileId, folder) {
   const response = await fetch(
-    `${API_URL}/${fileId}/copy`,
+    `${API_URL}/${fileId}/copy?supportsAllDrives=true`,
     {
       headers: {
         "Authorization": `Bearer ${auth}`,
         "Content-Type": "application/json"
       },
       method: "POST",
-      body: '{"parents":["root"],"appProperties":{"createdWithDdEfc":1}}'
+      body: JSON.stringify({
+        "parents": [folder],
+        "appProperties": {
+          "createdWithDdEfc": 1
+        }
+      })
     }
   );
   return await response.json();
@@ -91,7 +105,7 @@ async function clone(data) {
     }
 
     if(found) {
-      const cloneResult = await cloneOne(data.auth, fileInfo.id);
+      const cloneResult = await cloneOne(data.auth, fileInfo.id, data.destination);
       delete fileInfo.id;
       result.push({
         info: fileInfo,

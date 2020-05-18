@@ -19,19 +19,19 @@ function decode($encoded) {
 
 $API_URL = 'https://www.googleapis.com/drive/v3/files';
 $FIELDS_COMMON = 'size,originalFilename,md5Checksum';
-$VERSION = 1;
+$VERSION = 2;
 
 function fail($reason, $status = 400) {
     global $VERSION;
     http_response_code($status);
-    echo json_encode(array('status' => 'error', 'reason' => $reason, 'version' => $VERSION));
+    echo json_encode(array('status' => 'error', 'reason' => $reason, 'version' => $VERSION), JSON_UNESCAPED_SLASHES);
     exit;
 }
 
 function success($data, $status = 200) {
     global $VERSION;
     http_response_code($status);
-    echo json_encode(array('status' => 'ok', 'data' => $data, 'version' => $VERSION));
+    echo json_encode(array('status' => 'ok', 'data' => $data, 'version' => $VERSION), JSON_UNESCAPED_SLASHES);
     exit;
 }
 
@@ -41,13 +41,24 @@ function getFolderInfo($data, $fields) {
     $ch = curl_init($API_URL . '?q="' . $folder . '"+in+parents'
         . '+and+mimeType+!%3D+"application%2Fvnd.google-apps.shortcut"'
         . '+and+mimeType+!%3D+"application%2Fvnd.google-apps.folder"'
-        . '&fields=files(' . $fields . ')');
+        . '&fields=files(' . $fields . ')&orderBy=name_natural');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
     curl_setopt($ch, CURLOPT_HEADER, FALSE);
     curl_setopt($ch, CURLOPT_HTTPHEADER, array('Authorization: Bearer ' . $data['auth']));
     $response = curl_exec($ch);
     curl_close($ch);
-    return json_decode($response, TRUE);
+    $data1 = json_decode($response, TRUE);
+
+    $ch2 = curl_init($API_URL . '/' . $folder . '?fields=name');
+    curl_setopt($ch2, CURLOPT_RETURNTRANSFER, TRUE);
+    curl_setopt($ch2, CURLOPT_HEADER, FALSE);
+    curl_setopt($ch2, CURLOPT_HTTPHEADER, array('Authorization: Bearer ' . $data['auth']));
+    $response2 = curl_exec($ch2);
+    curl_close($ch2);
+    $data2 = json_decode($response2, TRUE);
+
+    $data1['name'] = $data2['name'];
+    return $data1;
 }
 
 $info = function($data) {
@@ -55,9 +66,9 @@ $info = function($data) {
     return getFolderInfo($data, 'mimeType,' . $FIELDS_COMMON);
 };
 
-function cloneOne($auth, $fileId) {
+function cloneOne($auth, $fileId, $folder) {
     global $API_URL;
-    $ch = curl_init($API_URL . '/' . $fileId . '/copy');
+    $ch = curl_init($API_URL . '/' . $fileId . '/copy?supportsAllDrives=true');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
     curl_setopt($ch, CURLOPT_HEADER, FALSE);
     curl_setopt($ch, CURLOPT_HTTPHEADER, array(
@@ -65,7 +76,12 @@ function cloneOne($auth, $fileId) {
         'Content-Type: application/json'
     ));
     curl_setopt($ch, CURLOPT_POST, TRUE);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, '{"parents":["root"],"appProperties":{"createdWithDdEfc":1}}');
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(array(
+        'parents' => array($folder),
+        'appProperties' => array(
+            'createdWithDdEfc' => 1
+        )
+    ), JSON_UNESCAPED_SLASHES));
     $response = curl_exec($ch);
     curl_close($ch);
     return json_decode($response, TRUE);
@@ -89,7 +105,7 @@ $clone = function($data) {
         }
 
         if($found) {
-            $cloneResult = cloneOne($data['auth'], $fileInfo['id']);
+            $cloneResult = cloneOne($data['auth'], $fileInfo['id'], $data['destination']);
             unset($fileInfo['id']);
             array_push($result, array(
                 'info' => $fileInfo,

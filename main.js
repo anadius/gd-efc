@@ -1,312 +1,180 @@
-(() => {
-  const SIZES = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const formatSize = sizeInBytes => {
-    if(sizeInBytes === 0) {
-      return "0B";
+// (async function() {
+
+const SERVER_VERSION = 2;
+const BLACKLIST = new Set([
+  // add rogue servers here
+]);
+const key = "6dZuyh/Wp39Xry9Y6N8LacQrWTP3fQ7aP9kHFVxztgc=";
+const accounts = {};
+const IGNORED_MIMETYPE = new Set([
+  "application/vnd.google-apps.folder",
+  "application/vnd.google-apps.shortcut"
+]);
+const MIXED_CONTENT = `<p>This could be because of "mixed content". The page you're on is served over HTTPS and tries to connect to another page that's served over HTTP - and your browser doesn't like that.</p><p>If you're on <b>Chrome</b> - click on the padlock icon, "Site settings", scroll to the bottom of the page and set "Insecure content" to "Allow"</p><p class="text-center"><img src="images/chrome1.png"></p><p class="text-center"><img src="images/chrome2.png"></p><p>If you're on <b>Firefox</b> - click on the padlock icon, click that arrow next to the "Firefox has blocked..." message and then on "Disable protection for now".</p><p class="text-center"><img src="images/firefox1.png"></p><p class="text-center"><img src="images/firefox2.png"></p>`;
+
+class Account {
+  static async authenticate(code, refresh) {
+    const acc = new Account();
+    if(refresh) {
+      acc.token = code;
+    }
+    await acc.getTokens(code, refresh);
+    await acc.getUserInfo();
+    acc.teamDrive = false;
+    return acc;
+  }
+
+  get free() {
+    return this.teamDrive ? Infinity : (this.limit - this.usage);
+  }
+
+  async serverRequest(server, folderId, files) {
+    await this.renewToken();
+
+    const data = {
+      folder: folderId,
+      auth: this.accessToken
+    };
+    let path = "/info";
+
+    if(typeof files !== "undefined") {
+      data.files = files;
+      data.destination = this.folder;
+      path = "/clone";
     }
 
-    const index = Math.min(Math.floor(Math.log2(sizeInBytes) / 10), 4);
-    const size = sizeInBytes / Math.pow(1024, index);
-    return `${Number(size.toFixed(2))}${SIZES[index]}`;
-  };
+    const result = await fetch(server + path, {method: "POST", body: JSON.stringify(data)});
 
-  this.formatSize = formatSize;
-})();
-
-const rowTemplate = $("#row_template").removeAttr("id");
-const setFilesInfo = (filesCount, filesSize) => {
-  $("#files_count").html(filesCount);
-  $("#files_size").html(formatSize(filesSize));
-};
-const clearFiles = () => {
-  $("#files").html("");
-  setFilesInfo(0, 0);
-};
-const addFile = (index, filename, filesize) => {
-  const row = rowTemplate.clone();
-  const id = `file_check_${index}`;
-  row.find("input").attr("id", id).attr("data-index", index);
-  row.find(".filename").attr("for", id).html(filename);
-  row.find(".filesize").html(formatSize(filesize));
-
-  row.appendTo("#files");
-};
-
-const modal = $("#error_modal");
-const showModal = (modalTitle, modalBody, class_, options) => {
-  modal.find(".modal-title").html(modalTitle)
-    .parent()
-    .removeClass("alert-danger alert-success alert-primary")
-    .addClass(class_);
-  modal.find(".modal-body").html(modalBody);
-  modal.data('bs.modal', null).modal(options);
-};
-const showError = (errorMessage) => showModal("Error", errorMessage, "alert-danger");
-const showSuccess = (successTitle, successBody) => showModal(
-  successTitle, successBody, "alert-success"
-);
-
-const loadingModal = $("#loading_modal");
-const showLoading = () => loadingModal.unbind("shown.bs.modal").modal("show");
-const hideLoading = () => loadingModal.on("shown.bs.modal", () => {
-  loadingModal.unbind("shown.bs.modal").modal("hide");
-}).modal("hide");
-
-const getCheckboxes = () => $('#files input[type=checkbox]');
-
-const saveAsFile = (filename, content) => {
-  const blob = new Blob([content], {type: "octet/stream"});
-  const a = document.createElement("a");
-  const url = window.URL.createObjectURL(blob);
-  a.href = url;
-  a.download = filename;
-  a.style = "display: none";
-  document.body.appendChild(a);
-  a.click();
-  window.URL.revokeObjectURL(url);
-  a.remove();
-};
-
-(() => {
-  const IGNORED_MIMETYPE = new Set([
-    "application/vnd.google-apps.folder",
-    "application/vnd.google-apps.shortcut"
-  ]);
-  const filterFiles = allFiles => {
-    const filteredFiles = [];
-    const addedFiles = new Set();
-    for(let i=0; i<allFiles.length; ++i) {
-      const file = allFiles[i];
-      if(IGNORED_MIMETYPE.has(file.mimeType)) {
-        continue;
-      }
-
-      const id = [file.originalFilename, file.size, file.md5Checksum].join("*");
-      if(addedFiles.has(id)) {
-        continue;
-      }
-      addedFiles.add(id);
-
-      delete file.mimeType;
-      filteredFiles.push({
-        index: i,
-        name: file.originalFilename,
-        size: Number(file.size)
-      });
-    }
-    filteredFiles.sort((a, b) => (a.name > b.name ? 1 : 0));
-
-    return filteredFiles;
-  };
-
-  this.filterFiles = filterFiles;
-})();
-
-(() => {
-  const LIST_TYPES = new Set(["p", "t", "g", "k", "l"]);
-  const SERVER_TYPES = {
-    "s": "https://{1}",
-    "i": "http://{1}",
-    "p": "https://pastebin.com/raw/{1}",
-    "t": "https://p.teknik.io/Raw/{1}",
-    "g": "https://gist.githubusercontent.com/{1}/raw/{2}",
-    "k": "http://{1}",
-    "l": "https://{1}"
-  };
-  const formatServer = (type_, args) => {
-    let url = SERVER_TYPES[type_];
-    if(typeof url === "undefined") {
-      throw Error(`server "${type_}" not supported`);
-    }
-
-    for(let i=1; ; ++i) {
-      const pattern = `{${i}}`;
-      if(!url.includes(pattern)) {
-        break;
-      }
-
-      const param = args[i-1];
-      if(typeof param === "undefined") {
-        throw Error(`missing param for server "${type_}": ${args}`);
-      }
-
-      url = url.replace(pattern, param);
-    }
-    return url;
-  };
-
-  const resultOrNull = async url => {
+    const text = await result.text();
+    let responseData;
     try {
-      const result = await fetch(url);
-      if(!result.ok) {
-        throw Error("Not ok");
-      }
-      return result;
+      responseData = JSON.parse(text);
     }
     catch(e) {
-      console.warn(`"${url}": ${e.message}`);
-      return null;
-    }
-  };
-
-  const getServerList = async url => {
-    let servers = sessionStorage.getItem(url);
-    if(servers !== null) {
-      return JSON.parse(servers);
+      throw Error(text);
     }
 
-    servers = [];
-    const result = await resultOrNull(url) || await resultOrNull(`https://cors-anywhere.herokuapp.com/${url}`);
-    if(result === null) {
-      throw Error(`Couldn't load server list: ${url}`);
+    if(responseData.status === "ok") {
+      if(typeof responseData.data.error !== "undefined") {
+        throw Error(responseData.data.error.message);
+      }
+      return responseData.data;
     }
-
-    for(const [, server] of (await result.text()).matchAll(/^\s*(https?:\/\/.+?)\s*$/gm)) {
-      servers.push(server);
+    else if(responseData.status === "error") {
+      throw Error(responseData.reason);
     }
-
-    sessionStorage.setItem(url, JSON.stringify(servers));
-
-    return servers;
-  };
-
-  const parseOptions = optionsString => {
-    const options = {};
-    for(const option of optionsString.split("<")) {
-      const optionParts = option.split(":");
-      const optionName = optionParts.shift();
-      if(optionParts.length === 0) {
-        options[optionName] = true;
-      }
-      else if(optionParts.length === 1) {
-        options[optionName] = optionParts[0];
-      }
-      else {
-        options[optionName] = optionParts;
-      }
+    else {
+      throw Error(text);
     }
-
-    return options;
-  };
-
-  const decodeDecryptServers = async encodedServers => {
-    const lists = [];
-    const servers = new Set();
-    const options = {};
-
-    for(const server of atob(encodedServers).split(";")) {
-      let type_, url;
-      try {
-        [, type_, url] = server.match(/^(.):(.+)$/);
-      }
-      catch(e) {
-        type_ = "s";
-        url = server;
-      }
-
-      if(type_ === "!") {
-        options = parseOptions(url);
-      }
-      else {
-        try {
-          url = formatServer(type_, url.split("<"));
-        }
-        catch(e) {
-          console.warn(e);
-          continue;
-        }
-
-        if(LIST_TYPES.has(type_)) {
-          lists.push(url);
-        }
-        else {
-          servers.add(url);
-        }
-      }
-    }
-
-    for(const listUrl of lists) {
-      let serverList;
-      try {
-        serverList = await getServerList(listUrl);
-      }
-      catch(e) {
-        console.warn(e);
-        continue;
-      }
-      if(serverList.length > 0) {
-        for(const url of serverList) {
-          servers.add(url);
-        }
-        break;
-      }
-    }
-
-    return [servers, options];
-  };
-
-  this.decodeDecryptServers = decodeDecryptServers;
-})();
-
-$("#check_all").change(function() {
-  getCheckboxes().prop("checked", this.checked);
-});
-
-(() => {
-  const keyCharAt = (key, i) => {
-    return key.charCodeAt(i % key.length);
-  };
-
-  const xor = (data, key) => {
-    const xored = new Uint8Array(data.length);
-    for(let i=0; i<data.length; ++i){
-      xored[i] = data[i] ^ keyCharAt(key, i);
-    }
-    return xored;
-  };
-
-  const xor_encrypt = (data, key) => {
-    const enc = new TextEncoder();
-    return b64.bytesToBase64(xor(enc.encode(data), key));
-  };
-
-  const xor_decrypt = (data, key) => {
-    const dec = new TextDecoder();
-    return dec.decode(xor(b64.base64ToBytes(data), key));
-  };
-  
-  this.xor_decrypt = xor_decrypt;
-  this.xor_encrypt = xor_encrypt;
-})();
-
-(async () => {
-  const key = "6dZuyh/Wp39Xry9Y6N8LacQrWTP3fQ7aP9kHFVxztgc=";
-  const u = xor_decrypt("BFRoR09cF2ZFBQ1sXBhJKUVgXyMOBD0XIic1QQU+WRU1Vx9mJTkV", key);
-  const p = xor_decrypt("blAARhoJFy8WZH06Qy9WNhsIAS1WOSk4", key);
-  const r = "urn:ietf:wg:oauth:2.0:oob";
-  let refreshToken = localStorage.getItem("refresh_token");
-  if(refreshToken !== null) {
-    refreshToken = xor_decrypt(refreshToken, key);
   }
-  let accessToken = null;
-  let expires, files, encryptedID, decryptServers, options, free;
 
-  const revokeToken = async () => {
-    accessToken = null;
-    localStorage.removeItem("refresh_token");
-
-    await fetch(
-      "https://oauth2.googleapis.com/revoke?token=" + encodeURIComponent(refreshToken),
-      {method:"POST"}
+  async cloneFile(fileId) {
+    return this.apiRequest(
+      `files/${fileId}/copy?supportsAllDrives=true&fields=id,size,originalFilename,webViewLink`,
+      {
+        headers: {
+          "Content-Type": "application/json"
+        },
+        method: "POST",
+        body: JSON.stringify({
+          "parents": [this.folder],
+          "appProperties": {
+            "createdWithDdEfc": 1
+          }
+        })
+      }
+    );
+  }
+  async getFolder(folderId) {
+    const data1 = await this.apiRequest(
+      `files/${folderId}?supportsAllDrives=true&fields=name`
     );
 
-    refreshToken = null;
-    sessionStorage.clear();
-    $("input").val("");
-    document.location.reload();
-  };
+    const data2 = await this.apiRequest(
+      `files?q="${folderId}"+in+parents`
+      + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.shortcut'"
+      + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.folder'"
+      + `&fields=files(id,webViewLink,size,originalFilename,mimeType)`
+      + "&orderBy=name_natural&supportsAllDrives=true&includeItemsFromAllDrives=true"
+    );
 
-  const getTokens = async (code, refresh) => {
+    return Object.assign(data2, data1);
+  }
+
+  async getMyFolder() {
+    const data1 = await this.apiRequest(
+      `files/${this.folder}?supportsAllDrives=true&fields=name,driveId,`
+      + "capabilities/canAddChildren,capabilities/canRemoveChildren,"
+      + "capabilities/canDeleteChildren,capabilities/canTrashChildren"
+    );
+
+    if(!data1.capabilities.canAddChildren) {
+      throw Error("Not a folder or can't create new files there.");
+    }
+
+    this.teamDrive = typeof data1.driveId !== "undefined";
+    if(this.teamDrive) {
+      data1.canDelete = data1.capabilities.canDeleteChildren;
+      data1.canTrash = data1.capabilities.canTrashChildren;
+      const driveData = await this.apiRequest(
+        `drives/${data1.driveId}?fields=name,restrictions/domainUsersOnly,restrictions/driveMembersOnly`
+      );
+      data1.canShare = !(driveData.restrictions.domainUsersOnly || driveData.restrictions.driveMembersOnly);
+      if(this.folder === data1.driveId) {
+        data1.name = driveData.name;
+      }
+    }
+    else {
+      await this.getUserInfo();
+      data1.canDelete = data1.capabilities.canRemoveChildren;
+      data1.canShare = true;
+      data1.canTrash = true;
+    }
+
+    const data2 = await this.apiRequest(
+      `files?q="${this.folder}"+in+parents`
+      + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.shortcut'"
+      + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.folder'"
+      + "+and+appProperties+has+%7B+key%3D'createdWithDdEfc'+and+value%3D'1'+%7D"
+      + `&fields=files(id,webViewLink,permissionIds,size,originalFilename,mimeType,trashed)`
+      + "&orderBy=name_natural&supportsAllDrives=true&includeItemsFromAllDrives=true"
+    );
+
+    return Object.assign(data2, data1);
+  }
+
+  async shareFile(fileId) {
+    return await this.apiRequest(
+      `files/${fileId}/permissions?supportsAllDrives=true`,
+      {
+        method: "POST",
+        body: '{"role":"reader","type":"anyone"}',
+        headers: {
+          "Content-Type": "application/json"
+        }
+      }
+    );
+  }
+  async trashFile(fileId) {
+    return await this.apiRequest(
+      `files/${fileId}?supportsAllDrives=true`,
+      {
+        method: "PATCH",
+        body: '{"trashed":"true"}',
+        headers: {
+          "Content-Type": "application/json"
+        }
+      }
+    );
+  }
+  async deleteFile(fileId) {
+    return await this.apiRequest(
+      `files/${fileId}?supportsAllDrives=true`,
+      {method: "DELETE"}
+    );
+  }
+
+  async getTokens(code, refresh) {
     const params = new URLSearchParams({
       "client_id": u,
       "client_secret": p
@@ -335,251 +203,1164 @@ $("#check_all").change(function() {
 
     if(result.ok) {
       const data = await result.json();
-      accessToken = data.access_token;
-      expires = new Date();
-      expires.setSeconds(expires.getSeconds() + data.expires_in - 60);
-
-      if(refresh !== true) {
-        refreshToken = data.refresh_token;
-        localStorage.setItem("refresh_token", xor_encrypt(refreshToken, key));
+      this.accessToken = data.access_token;
+      this.expires = new Date();
+      this.expires.setSeconds(this.expires.getSeconds() + data.expires_in - 60);
+      if(!refresh) {
+        this.token = data.refresh_token;
       }
     }
     else {
-      await revokeToken();
+      throw Error(await result.text());
     }
   };
-
-  const renewToken = async () => {
-    if((new Date()) > expires) {
-      await getTokens(refreshToken, true);
+  async renewToken() {
+    if((new Date()) > this.expires) {
+      await this.getTokens(this.token, true);
     }
-  };
+  }
+  // this doesn't work, refresh token gets revoked too...
+  /* async forceRenewToken() {
+    await Account.revokeToken(this.accessToken);
+    await this.getTokens(this.token, true);
+  } */
 
-  const apiRequest = async (path, options) => {
-    await renewToken();
+  async apiRequest(path, options) {
+    await this.renewToken();
 
     const opt = options || {};
     opt.headers = opt.headers || {};
-    opt.headers.Authorization = opt.headers.Authorization || `Bearer ${accessToken}`;
+    opt.headers.Authorization = opt.headers.Authorization || `Bearer ${this.accessToken}`;
     opt.headers.Accept = opt.headers.Accept || "application/json";
 
     const result = await fetch(`https://www.googleapis.com/drive/v3/${path}`, opt);
-    return result.json();
-  };
+    if(result.ok && opt.method === "DELETE") {
+      return;
+    }
 
-  const getUserInfo = async () => {
-    const data = await apiRequest(
+    const text = await result.text();
+    let responseData;
+    try {
+      responseData = JSON.parse(text);
+    }
+    catch(e) {
+      throw Error(text);
+    }
+
+    if(typeof responseData.error !== "undefined") {
+      throw Error(responseData.error.message);
+    }
+    return responseData;
+  }
+
+  async getUserInfo() {
+    const data = await this.apiRequest(
       "about?fields=user%2FdisplayName%2Cuser%2FemailAddress%2C"
       + "storageQuota%2Flimit%2CstorageQuota%2Fusage"
     );
-    const usage = typeof data.storageQuota.usage === "undefined" ? 0 : data.storageQuota.usage;
-    const limit = typeof data.storageQuota.limit === "undefined" ? "unlimited" : formatSize(data.storageQuota.limit);
-
-    free = data.storageQuota.limit - data.storageQuota.usage;
-    $("#user_name").html(`Hello <b>${data.user.displayName}</b> (${data.user.emailAddress})`);
-    $("#quota").html(`Used <b>${formatSize(usage)}</b> of <b>${limit}</b>`);
+    this.usage = typeof data.storageQuota.usage === "undefined" ? 0 : Number(data.storageQuota.usage);
+    this.limit = typeof data.storageQuota.limit === "undefined" ? Infinity : Number(data.storageQuota.limit);
+    this.name = data.user.displayName;
+    this.email = data.user.emailAddress;
   };
 
-  const serverRequest = async (files) => {
-    await renewToken();
+  static async revokeToken(token) {
+    const result = await fetch(
+      "https://oauth2.googleapis.com/revoke?token=" + encodeURIComponent(token),
+      {method:"POST"}
+    );
 
-    const servers = Array.from(decryptServers);
-    const data = {
-      folder: encryptedID,
-      auth: accessToken
-    };
-    let path = "/info";
-
-    if(typeof files !== "undefined") {
-      data.files = files;
-      path = "/clone";
+    const text = await result.text();
+    let responseData;
+    try {
+      responseData = JSON.parse(text);
+    }
+    catch(e) {
+      throw Error(text);
     }
 
-    let result;
-    while(servers.length > 0) {
-      const index = Math.floor(Math.random() * servers.length);
-      const url = `${servers.splice(index, 1)[0]}${path}`;
-
-      result = await fetch(url, {method: "POST", body: JSON.stringify(data)});
-      if(result.ok) {
-        return result.json();
-      }
-    }
-
-    throw Error("Couldn't connect to decryption server.");
-  };
-
-  const authInit = () => {
-    $("#get_auth").click(function(event) {
-      event.preventDefault();
-
-      const params = new URLSearchParams({
-        "client_id": u,
-        "redirect_uri": r,
-        "response_type": "code",
-        "access_type": "offline",
-        "approval_prompt": "auto",
-        "scope": "https://www.googleapis.com/auth/drive"
-      });
-      window.open(`https://accounts.google.com/o/oauth2/auth?${params.toString()}`);
-    });
-
-    $("#auth_continue").click(async function(event) {
-      event.preventDefault();
-
-      $("#authenticate").hide();
-      showLoading();
-      await getTokens($("#auth_input").val());
-      hideLoading();
-      init();
-    });
-
-    $("#authenticate").show();
-  };
-
-  const init = async () => {
-    $("#log_out").click(async function(event) {
-      event.preventDefault();
-
-      await revokeToken();
-    });
-
-    $("#folder_load").click(async function(event) {
-      event.preventDefault();
-
-      $("#file_list").hide();
-      clearFiles();
-      files = null;
-      encryptedID = null;
-      decryptServers = null;
-
-      const encryptedURL = $("#folder_input").val();
-      const encryptedParts = encryptedURL.split(".");
-
-      if(encryptedParts.length !== 2) {
-        showError("Invalid encrypted folder ID.");
-        return;
-      }
-
-      try {
-        [decryptServers, options] = await decodeDecryptServers(encryptedParts[0]);
-      }
-      catch(e) {
-        console.warn(e);
-        showError("Invalid encrypted folder ID.");
-        return;
-      }
-
-      const cachedResponse = sessionStorage.getItem(encryptedURL);
-      encryptedID = encryptedParts[1];
-
-      if(cachedResponse !== null && cachedResponse !== "undefined") {
-        files = JSON.parse(cachedResponse);
-      }
+    if(typeof responseData.error !== "undefined") {
+      if(responseData.error === "invalid_token") {}
       else {
-        let response;
-        showLoading();
-        try {
-          response = await serverRequest();
-        }
-        catch(e) {
-          hideLoading();
-          showError(e.message);
-          return;
-        }
-        hideLoading();
-        if(typeof response.data.error !== "undefined") {
-          showError(response.data.error.message);
-          return;
-        }
-        files = response.data.files;
-        if(typeof files === "undefined") {
-          showError("Files info missing.");
-          return;
-        }
-        sessionStorage.setItem(encryptedURL, JSON.stringify(files));
+        throw Error(text);
       }
+    }
+  }
+}
 
-      const filteredFiles = filterFiles(files);
-      let totalSize = 0;
-      for(const file of filteredFiles) {
-        totalSize += file.size;
-        addFile(file.index, file.name, file.size);
-      }
-      setFilesInfo(filteredFiles.length, totalSize);
+class FileList {
+  constructor(target, name, toggleElements) {
+    const hideElements = [`#collapse_files_${name}`];
+    if(typeof toggleElements !== "undefined") {
+      hideElements.push(toggleElements);
+    }
+    target.html($("#templates .file_list").html());
+    this.self = target;
+    this.name = name;
+    this.self
+      .find("h4").attr("data-target", hideElements.join(",")).end()
+      .find(".collapse").attr("id", `collapse_files_${name}`).end()
+      .find("thead")
+        .find("label").attr("for", `check_all_${name}`).end()
+        .find("input[type=checkbox]").attr("id", `check_all_${name}`).change(event => {
+          this.getCheckboxes().prop("checked", event.target.checked);
+        });
+    this.clear();
+  }
 
-      $("#file_list").show();
+  clearCheckAll() {
+    this.self.find("thead input[type=checkbox]").prop("checked", false);
+  }
+
+  clear() {
+    this.count = 0;
+    this.size = 0;
+    this.files = {};
+    this.self.find(".file_row").remove();
+    this.clearCheckAll();
+  }
+
+  get count() {
+    return this._count;
+  }
+  set count(value) {
+    this._count = value;
+    this.self.find(".details_container .files_count").text(value);
+    if(value === 0) {
+      this.self.find("table").hide();
+    }
+    // sanity check
+    else if(value > 0) {
+      this.self.find("table").show();
+    }
+  }
+
+  get size() {
+    return this._size;
+  }
+  set size(value) {
+    this._size = value;
+    this.self.find(".details_container .files_size").text(formatSize(value));
+  }
+
+  get title() {
+    return this._title;
+  }
+  set title(value) {
+    this._title = value;
+    this.self.find(".title_container h4").text(value);
+  }
+
+  getCheckboxes() {
+    return this.self.find(".file_row input[type=checkbox]");
+  }
+  getCheckedCheckboxes() {
+    return this.getCheckboxes().filter(":checked");
+  }
+
+  getFiles(checkboxes) {
+    const files = [];
+    checkboxes.each((i, element) => {
+      files.push(this.files[$(element).data("id")].data);
     });
+    return files;
+  }
 
-    $("#download_md5").click(async function(event) {
-      const lines = [];
-      getCheckboxes().each((i, el) => {
-        const index = el.getAttribute("data-index");
-        const file = files[index];
-        lines.push(`${file.md5Checksum} *${file.originalFilename}`);
+  uncheckFiles(files) {
+    for(const file of files) {
+      const fileId = getFileId(file);
+      this.files[fileId].element.find("input[type=checkbox]").prop("checked", false);
+    }
+    this.clearCheckAll();
+  }
+
+  addButton(buttonType, buttonName, callback, buttonClasses) {
+    const buttonContainer = $("#templates .file_button").clone();
+    const button = buttonContainer.find("button").text(buttonName);
+
+    if(typeof buttonClasses !== "undefined") {
+      for(const buttonClass of buttonClasses) {
+        button.addClass(buttonClass);
+      }
+    }
+
+    if(buttonType === "title") {
+      this.self.find(".title_container").append(buttonContainer);
+      button.click(event => {
+        event.preventDefault();
+        callback(this.getFiles(this.getCheckboxes()), event);
       });
-      lines.push('');
-
-      saveAsFile("hashsums.md5", lines.join("\n"));
-    });
-
-    $("#copy_files").click(async function(event) {
-      await getUserInfo();
-
-      const checkedFiles = [];
-      let totalSize = 0;
-      getCheckboxes().filter(":checked").each((i, el) => {
-        const index = el.getAttribute("data-index");
-        const file = files[index];
-        totalSize += Number(file.size);
-        checkedFiles.push(file);
+    }
+    else {
+      this.self.find(".details_container").append(buttonContainer);
+      button.click(event => {
+        event.preventDefault();
+        callback(this.getFiles(this.getCheckedCheckboxes()), event);
       });
+    }
+  }
 
-      if(checkedFiles.length === 0) {
-        showError("No files selected.");
-        return;
-      }
+  addFile(file) {
+    // ignore folders and shortcuts
+    if(IGNORED_MIMETYPE.has(file.mimeType)) {
+      return;
+    }
+    const fileId = getFileId(file);
+    // ignore duplicates (only for encrypted folders, they don't return real IDs)
+    if(typeof this.files[fileId] !== "undefined") {
+      return;
+    }
+    
+    const size = Number(file.size);
+    const id = `check_${this.name}_${this.count}`;
+    const fileRow = $("#templates .file_row").clone()
+      .find("input[type=checkbox]").attr("id", id).data("id", fileId).end()
+      .find(".filename").attr("for", id).text(`${file.originalFilename} `).end()
+      .find(".filesize").text(formatSize(size)).end();
 
-      if(free < totalSize) {
-        showError("You don't have enough space to copy selected files.");
-        return;
-      }
+    if(typeof file.id !== "undefined") {
+      fileRow.find(".filename").append(
+        $("<a>Download</a>").attr("href", file.webViewLink)
+      );
+    }
 
-      let result;
-      showLoading();
-      try {
-        result = await serverRequest(checkedFiles);
-      }
-      catch(e) {
-        hideLoading();
-        showError(e.message);
-        return;
-      }
-      hideLoading();
-      const links = [];
-      for(const item of result.data) {
-        if(item.status === "ok" && typeof item.data.error === "undefined") {
-          links.push(
-            `<a href="https://drive.google.com/file/d/${item.data.id}/view">${item.data.name}</a>`
-          );
-        }
-      }
+    this.files[fileId] = {
+      data: file,
+      element: fileRow
+    };
+    this.count += 1;
+    this.size += size;
 
-      getUserInfo();
-      showSuccess("Files copied:", links.join("<br>"));
-    });
+    this.self.find(".files").append(fileRow);
+  }
+  removeFile(file) {
+    try {
+      const id = getFileId(file);
+      this.files[id].element.remove();
+      delete this.files[id];
+    }
+    catch(e) {}
+  }
+}
 
-    await getUserInfo();
-    $("#user_info").show();
-  };
+function getFileId(file) {
+  return (
+      typeof file.id !== "undefined"
+      ? file.id
+      : [file.originalFilename, file.size, file.md5Checksum].join("*")
+    );
+}
 
-  if(refreshToken !== null) {
-    await getTokens(refreshToken, true);
-    init();
+const SIZES = ['B', 'KB', 'MB', 'GB', 'TB'];
+function formatSize(sizeInBytes) {
+  if(sizeInBytes === 0) {
+    return "0B";
+  }
+
+  const index = Math.min(Math.floor(Math.log2(sizeInBytes) / 10), 4);
+  const size = sizeInBytes / Math.pow(1024, index);
+  return `${Number(size.toFixed(2))}${SIZES[index]}`;
+}
+
+function saveAsFile(filename, content) {
+  const blob = new Blob([content], {type: "octet/stream"});
+  const a = document.createElement("a");
+  const url = window.URL.createObjectURL(blob);
+  a.href = url;
+  a.download = filename;
+  a.style = "display: none";
+  document.body.appendChild(a);
+  a.click();
+  window.URL.revokeObjectURL(url);
+  a.remove();
+}
+
+function keyCharAt(key, i) {
+  return key.charCodeAt(i % key.length);
+}
+function xor(data, key) {
+  const xored = new Uint8Array(data.length);
+  for(let i=0; i<data.length; ++i){
+    xored[i] = data[i] ^ keyCharAt(key, i);
+  }
+  return xored;
+}
+function xor_encrypt(data, key) {
+  const enc = new TextEncoder();
+  return b64.bytesToBase64(xor(enc.encode(data), key));
+}
+function xor_decrypt(data, key) {
+  const dec = new TextDecoder();
+  return dec.decode(xor(b64.base64ToBytes(data), key));
+}
+
+function getX(xName) {
+  const xText = localStorage.getItem(xName);
+  let x = {};
+  if(xText !== null) {
+    try {
+      x = JSON.parse(xor_decrypt(xText, key));
+    }
+    catch(e) {}
+  }
+  return x;
+}
+function setX(xName, x) {
+  localStorage.setItem(xName, xor_encrypt(JSON.stringify(x), key));
+}
+
+function getAccounts() {
+  return getX("accounts");
+}
+function setAccounts(accounts) {
+  setX("accounts", accounts);
+}
+
+function getServerCache() {
+  return getX("serverCache");
+}
+function setServerCache(serverCache) {
+  setX("serverCache", serverCache);
+}
+
+const modal = $("#error_modal");
+function showModal(modalTitle, modalBody, class_, large) {
+  if(large === true) {
+    modal.find(".modal-dialog").addClass("modal-lg");
   }
   else {
-    authInit();
+    modal.find(".modal-dialog").removeClass("modal-lg");
+  }
+  modal.find(".modal-title").text(modalTitle)
+    .parent()
+    .removeClass("alert-danger alert-success alert-primary")
+    .addClass(class_);
+  modal.find(".modal-body").html(modalBody);
+  modal.data('bs.modal', null).modal();
+}
+function showError(errorMessage, large) {
+  showModal("Error", errorMessage, "alert-danger", large);
+}
+function showSuccess(successTitle, successBody){
+  showModal(successTitle, successBody, "alert-success");
+}
+
+const loadingModal = $("#loading_modal");
+function showLoading() {
+  loadingModal.unbind("shown.bs.modal").on("hidden.bs.modal", () => {
+    loadingModal.unbind("hidden.bs.modal").modal("show");
+  }).modal("show");
+}
+function hideLoading() {
+  loadingModal.unbind("hidden.bs.modal").on("shown.bs.modal", () => {
+    loadingModal.unbind("shown.bs.modal").modal("hide");
+  }).modal("hide");
+}
+
+function getAccountType(element) {
+  const accType = $(element).closest("[data-account-type]").data("account-type");
+  if(accType !== "main" && accType !== "dummy") {
+    throw Error("Unknown account type");
+  }
+  return accType;
+}
+
+function listSavedAccounts() {
+  const accs = getAccounts();
+  const accRowTemplate = $("#templates .account_row");
+  const accountListElement = $("#account_list");
+  const table = accountListElement.find("tbody");
+  const filterOut = [];
+  for(const acc of Object.values(accounts)) {
+    filterOut.push(acc.email);
   }
 
-  window.apiRequest = apiRequest;
-})();
+  let empty = true;
+  for(const email of Object.keys(accs)) {
+    if(filterOut.includes(email)) {
+      continue;
+    }
+
+    const details = accs[email];
+    const name = email !== "unknown" ? details.name : "unknown";
+    const accRow = accRowTemplate.clone();
+
+    accRow
+      .data("email", email)
+      .data("token", details.token)
+      .find("td:first-child")
+        .html(`<b>${name}</b> (${email})`);
+    table.append(accRow);
+    empty = false;
+  }
+
+  if(!empty) {
+    accountListElement.show();
+  }
+}
+
+function updateUserInfo() {
+  for(const accountType of Object.keys(accounts)) {
+    const acc = accounts[accountType];
+    const free = acc.free;
+    $(`[data-account-type="${accountType}"]`)
+      .find(".user_name").html(`<b>${acc.name}</b> (${acc.email})`).end()
+      .find(".free_space").html(`Free: <b>${free === Infinity ? "unlimited" : formatSize(free)}</b>`);
+  }
+}
+
+async function logIn(accountType, code, oldEmail) {
+  const accs = getAccounts();
+  const refresh = typeof oldEmail !== "undefined";
+  let account;
+
+  showLoading();
+  try {
+    account = await Account.authenticate(code, refresh);
+  }
+  catch(e) {
+    hideLoading();
+    showError(e.message);
+    return;
+  }
+  hideLoading();
+
+  accounts[accountType] = account;
+
+  // this shouldn't happen, can you even change email? but just in case...
+  if(refresh) {
+    const acc = accs[oldEmail];
+    account.dummy = acc.dummy || false;
+    account.folder = acc.folder || "root";
+    if(account.email !== oldEmail) {
+      delete accs[oldEmail];
+    }
+  }
+  // if someone adds a new acc that's already on the list
+  else {
+    account.dummy = false;
+    account.folder = "root";
+    const acc = accs[account.email];
+    if(typeof acc !== "undefined" && acc.token !== account.token) {
+      Account.revokeToken(acc.token);
+    }
+  }
+  accs[account.email] = Object.assign(accs[account.email] || {}, {
+    name: account.name,
+    token: account.token,
+    dummy: account.dummy,
+    folder: account.folder
+  });
+  setAccounts(accs);
+
+  updateUserInfo();
+
+  $("#account_selection").modal("hide");
+  $(`[data-account-type="${accountType}"]`)
+    .find(".select_acc").hide().end()
+    .find(".acc_info").show();
+  if(accountType === "main") {
+    // copying with using dummy acc not implemented yet
+    if(true) {
+      showFiles();
+    } else
+    // hide buttons when selecting dummy acc or switching from normal to dummy acc
+    if(account.dummy) {
+      $('[data-account-type="dummy"] .select_acc').hide();
+      showFiles();
+    }
+    // show buttons when selecting normal acc or switching from dummy to normal acc
+    else if(typeof accounts.dummy === "undefined") {
+      $('[data-account-type="dummy"] .select_acc').show();
+    }
+    else {
+      showFiles();
+    }
+  }
+  else {
+    // always use "root" folder on dummy accounts
+    account.folder = "root";
+    showFiles();
+  }
+}
+
+async function logOut(rowElem) {
+  rowElem.addClass("loading");
+  try {
+    await Account.revokeToken(rowElem.data("token"));
+  }
+  catch(e) {
+    rowElem.removeClass("loading");
+    showError(e.message);
+    return;
+  }
+  rowElem.removeClass("loading");
+  const accs = getAccounts();
+  delete accs[rowElem.data("email")];
+  setAccounts(accs);
+
+  $("#account_list")
+    .hide()
+    .find(".account_row")
+      .remove();
+  listSavedAccounts();
+}
+
+async function showFiles() {
+  await reloadFolder();
+  $("#my_files").show();
+  $("#server_card").show();
+}
+
+async function reloadFolder() {
+  let data;
+  showLoading();
+  try {
+    data = await accounts.main.getMyFolder();
+  }
+  catch(e) {
+    data = {
+      name: "ERROR",
+      canShare: false,
+      canTrash: false,
+      canDelete: false,
+      error: e
+    }
+  }
+  myFiles.clear();
+  myFiles.title = data.name;
+  myFiles.self
+    .find(".share_button").prop("disabled", !data.canShare).end()
+    .find(".trash_button").prop("disabled", !data.canTrash).end()
+    .find(".delete_button").prop("disabled", !data.canDelete);
+  if(data.canDelete) {
+    myFiles.self.find(".trash_button").parent().hide();
+    myFiles.self.find(".delete_button").parent().show();
+  }
+  else {
+    myFiles.self.find(".trash_button").parent().show();
+    myFiles.self.find(".delete_button").parent().hide();
+  }
+
+  if(typeof data.error !== "undefined") {
+    hideLoading();
+    showError(data.error.message);
+    return;
+  }
+
+  updateUserInfo();
+  for(const file of data.files) {
+    if(!file.trashed) {
+      myFiles.addFile(file);
+    }
+  }
+  hideLoading();
+}
+
+function markAsDummy() {
+  accounts.main.dummy = true;
+  $('[data-account-type="dummy"] .select_acc').hide();
+  const accs = getAccounts();
+  accs[accounts.main.email].dummy = true;
+  setAccounts(accs);
+  showFiles();
+}
+
+function onAccountListClick(event) {
+  const clickedElement = $(event.target);
+  const accountType = getAccountType(event.target);
+
+  // select account
+  if(clickedElement.is("td:first-child")) {
+    logIn(accountType, clickedElement.parent().data("token"), clickedElement.parent().data("email"));
+  }
+  // remove account
+  else if(clickedElement.is(".remove-acc")) {
+    event.preventDefault();
+    logOut(clickedElement.closest("tr"));
+  }
+}
+
+function onGetAuth(event) {
+  event.preventDefault();
+  const params = new URLSearchParams({
+    "state": new URLSearchParams({
+      "from": "gd-efc"
+    }),
+    "client_id": u,
+    "redirect_uri": r,
+    "response_type": "code",
+    "access_type": "offline",
+    "approval_prompt": "auto",
+    "scope": "https://www.googleapis.com/auth/drive"
+  });
+  window.open(`https://accounts.google.com/o/oauth2/auth?${params.toString()}`);
+}
+
+function onAuthContinue(event) {
+  event.preventDefault();
+  const accountType = getAccountType(event.target);
+  const code = $("#auth_input").val();
+  logIn(accountType, code);
+  $("#auth_input").val("");
+}
+
+async function onDestinationSet(event) {
+  event.preventDefault();
+  const url = $("#destination_input").val().trim();
+
+  let id;
+  if(url === "" || url === "root") {
+    id = "root";
+  }
+  else {
+    const m = url.match(/^https:\/\/drive\.google\.com\/(?:open\?id=|drive\/.*?folders\/)([0-9a-zA-Z\-_]+)/);
+    if(m === null) {
+      showError("Bad URL");
+      return;
+    }
+    id = m[1];
+  }
+
+  showLoading();
+  let data;
+  try {
+    data = await accounts.main.apiRequest(
+      `files/${id}?supportsAllDrives=true`
+      + "&fields=capabilities/canAddChildren");
+    if(!data.capabilities.canAddChildren) {
+      throw Error("Not a folder or can't create new files there.");
+    }
+  }
+  catch(e) {
+    hideLoading();
+    showError(e.message);
+    return;
+  }
+  hideLoading();
+
+  const accs = getAccounts();
+  accs[accounts.main.email].folder = id;
+  setAccounts(accs);
+  accounts.main.folder = id;
+
+  $("#destination_selection").modal("hide");
+  $("#destination_input").val("");
+
+  reloadFolder();
+}
+
+    const links = [];
+
+async function onShare(files) {
+  showLoading();
+  const links = [];
+  try {
+    for(const file of files) {
+      links.push(file.webViewLink);
+      if(file.permissionIds.includes("anyoneWithLink")) {
+        continue;
+      }
+      await accounts.main.shareFile(file.id);
+      file.permissionIds.push("anyoneWithLink");
+    }
+    hideLoading();
+  }
+  catch(e) {
+    hideLoading();
+    showError(e.message);
+    return;
+  }
+  $("#share_links").modal("show").find("textarea").val(links.join("\n"));
+}
+async function onTrashOrDelete(files, action) {
+  showLoading();
+  try {
+    for(const file of files) {
+      await accounts.main[action](file.id);
+      myFiles.removeFile(file);
+    }
+  }
+  catch(e) {
+    hideLoading();
+    showError(e.message);
+  }
+  reloadFolder();
+}
+async function onTrash(files) {
+  return onTrashOrDelete(files, "trashFile");
+}
+async function onDelete(files) {
+  return onTrashOrDelete(files, "deleteFile");
+}
+
+const LIST_TYPES = new Set(["p", "t", "g", "k", "l"]);
+const SERVER_TYPES = {
+  "s": "https://{1}",
+  "i": "http://{1}",
+  "p": "https://pastebin.com/raw/{1}",
+  "t": "https://p.teknik.io/Raw/{1}",
+  "g": "https://gist.githubusercontent.com/{1}/raw/{2}",
+  "k": "http://{1}",
+  "l": "https://{1}"
+};
+function formatServer(type_, args) {
+  let url = SERVER_TYPES[type_];
+  if(typeof url === "undefined") {
+    throw Error(`server "${type_}" not supported`);
+  }
+
+  for(let i=1; ; ++i) {
+    const pattern = `{${i}}`;
+    if(!url.includes(pattern)) {
+      break;
+    }
+
+    const param = args[i-1];
+    if(typeof param === "undefined") {
+      throw Error(`missing param for server "${type_}": ${args}`);
+    }
+
+    url = url.replace(pattern, param);
+  }
+  return url;
+}
+
+class FolderManager {
+  constructor() {
+    this.initialized = false;
+    this.encryptedIdOrUrl = null;
+    this.idType = null;
+    this.id = null;
+    this.servers = null;
+    this.lists = null;
+    this.options = null;
+    this.knownGoodServer = null;
+  }
+
+  init(encryptedIdOrUrl) {
+    this.initialized = false;
+    this.encryptedIdOrUrl = encryptedIdOrUrl;
+
+    const m = encryptedIdOrUrl.match(/^https:\/\/drive\.google\.com\/(?:open\?id=|drive\/.*?folders\/)([0-9a-zA-Z\-_]+)/);
+    if(m !== null) {
+      this.idType = "normal";
+      this.id = m[1];
+    }
+    else {
+      this.idType = "encrypted";
+      const encryptedParts = encryptedIdOrUrl.split(".");
+
+      if(encryptedParts.length !== 2) {
+        throw Error("Invalid encrypted folder ID.");
+      }
+
+      this.decodeDecryptServers(encryptedParts[0]);
+      this.id = encryptedParts[1];
+
+      const serverCache = getServerCache();
+      for(const listUrl of this.lists) {
+        if(typeof serverCache[listUrl] !== "undefined") {
+          for(const serverUrl of serverCache[listUrl]) {
+            this.servers.add(serverUrl);
+          }
+        }
+      }
+    }
+
+    this.initialized = true;
+  }
+
+  decodeDecryptServers(serversAndOptions) {
+    this.servers = new Set();
+    this.lists = new Set();
+
+    for(const server of atob(serversAndOptions).split(";")) {
+      let type_, url;
+      try {
+        [, type_, url] = server.match(/^(.):(.+)$/);
+      }
+      catch(e) {
+        type_ = "s";
+        url = server;
+      }
+
+      if(type_ === "!") {
+        this.parseOptions(url);
+      }
+      else {
+        try {
+          url = formatServer(type_, url.split("<"));
+        }
+        catch(e) {
+          console.warn(e);
+          continue;
+        }
+
+        if(BLACKLIST.has(server)) {
+          continue;
+        }
+
+        if(LIST_TYPES.has(type_)) {
+          this.lists.add(url);
+        }
+        else {
+          this.servers.add(url);
+        }
+      }
+    }
+  }
+
+  parseOptions(optionsString) {
+    this.options = {};
+    for(const option of optionsString.split("<")) {
+      const optionParts = option.split(":");
+      const optionName = optionParts.shift();
+      if(optionParts.length === 0) {
+        this.options[optionName] = true;
+      }
+      else if(optionParts.length === 1) {
+        this.options[optionName] = optionParts[0];
+      }
+      else {
+        this.options[optionName] = optionParts;
+      }
+    }
+  }
+
+  isInitialized() {
+    if(!this.initialized) {
+      throw Error("Folder manager not initialized.");
+    }
+  }
+
+  async getServerList(url) {
+    const servers = new Set();
+    let data = "";
+    try {
+      data = await (await fetch(url)).text();
+    }
+    catch(e) {
+      console.warn(url, e);
+      try {
+        data = await showPrompt("Open server list", `Open <a href="${url}">${url}</a> and paste the response below:`);
+      }
+      // cancelled, ignore
+      catch(e) {}
+    }
+
+    for(const [, server] of data.matchAll(/^\s*(https?:\/\/.+?)\/?\s*$/gm)) {
+      if(!BLACKLIST.has(server)) {
+        this.servers.add(server);
+        servers.add(server);
+      }
+    }
+
+    if(servers.size > 0) {
+      const serverCache = getServerCache();
+      serverCache[url] = Array.from(servers);
+      setServerCache(serverCache);
+    }
+  }
+
+  async * getDecryptionServer() {
+    const tested = new Set();
+
+    // can be null but this.servers won't have null anyway
+    if(this.servers.has(this.knownGoodServer)) {
+      yield this.knownGoodServer;
+      tested.add(this.knownGoodServer);
+    }
+
+    const yieldUntestedOnly = function* (serversSet) {
+      const servers = Array.from(serversSet);
+
+      while(servers.length > 0) {
+        const index = Math.floor(Math.random() * servers.length);
+        const server = servers.splice(index, 1)[0];
+
+        if(!tested.has(server)) {
+          yield server;
+          tested.add(server);
+        }
+      }
+    }
+
+    yield* yieldUntestedOnly(this.servers);
+
+    for(const listUrl of this.lists) {
+      await this.getServerList(listUrl);
+      yield* yieldUntestedOnly(this.servers);
+    }
+
+    let errorMessage = "<p>No working decryption server found.</p>";
+    if(document.location.protocol === "https:" && Array.from(this.servers).some(x => x.startsWith("http:"))) {
+      errorMessage += MIXED_CONTENT;
+    }
+
+    throw Error(errorMessage);
+  }
+
+  async getInfo() {
+    this.isInitialized();
+
+    if(this.idType === "normal") {
+      return accounts.main.getFolder(this.id);
+    }
+    else {
+      // return cached response if found
+      const cachedResponse = sessionStorage.getItem(this.encryptedIdOrUrl);
+      if(cachedResponse !== null) {
+        return JSON.parse(cachedResponse);
+      }
+
+      const acc = typeof accounts.dummy === "undefined" ? accounts.main : accounts.dummy;
+
+      for await(const server of this.getDecryptionServer()) {
+        let info;
+        try {
+          info = await acc.serverRequest(server, this.id);
+        }
+        catch(e) {
+          console.warn(server, e);
+          continue;
+        }
+
+        // save response to cache
+        sessionStorage.setItem(this.encryptedIdOrUrl, JSON.stringify(info));
+        // set known good server, this will be used first in the next call
+        this.knownGoodServer = server;
+        return info;
+      }
+    }
+  }
+
+  async cloneFiles(files) {
+    this.isInitialized();
+
+    if(this.idType === "normal") {
+      const result = [];
+      for(const file of files) {
+        const newFile = await accounts.main.cloneFile(file.id);
+        result.push({
+          info: file,
+          status: "ok",
+          data: newFile
+        });
+        myFiles.addFile(newFile);
+      }
+      return result;
+    }
+    else {
+      if(typeof accounts.dummy !== "undefined") {
+        throw Error("Copying through the dummy acc not implemented yet");
+      }
+      const acc = typeof accounts.dummy === "undefined" ? accounts.main : accounts.dummy;
+
+      for await(const server of this.getDecryptionServer()) {
+        let result;
+        try {
+          result = await acc.serverRequest(server, this.id, files);
+        }
+        catch(e) {
+          console.warn(server, e);
+          continue;
+        }
+
+        // set known good server, this will be used first in the next call
+        this.knownGoodServer = server;
+        return result;
+      }
+    }
+  }
+
+}
+
+async function onFolderLoad(event) {
+  event.preventDefault();
+
+  $("#server_files").hide();
+  serverFiles.clear();
+
+  showLoading();
+  let info;
+  try {
+    folderManager.init($("#folder_input").val());
+    info = await folderManager.getInfo();
+  }
+  catch(e) {
+    hideLoading();
+    showError(e.message, true);
+    return;
+  }
+  hideLoading();
+
+  serverFiles.clear();
+  serverFiles.title = info.name;
+  for(const file of info.files) {
+    serverFiles.addFile(file);
+  }
+
+  $("#server_files").show();
+}
+
+function onMd5Download(files) {
+  const lines = [];
+  for(const file of files) {
+    lines.push(`${file.md5Checksum} *${file.originalFilename}`);
+  }
+  lines.push("");
+
+  saveAsFile("hashsums.md5", lines.join("\n"));
+}
+async function onCopy(files) {
+  if(files.length === 0) {
+    showError("No files selected.");
+    return;
+  }
+
+  const filteredFiles = [];
+  const free = accounts.main.free;
+  let totalSize = 0;
+  for(const file of files) {
+    const size = Number(file.size);
+    if(totalSize + size < free) {
+      totalSize += size;
+      filteredFiles.push(file);
+    }
+  }
+
+  if(filteredFiles.length === 0) {
+    showError("No space to copy any files.");
+    return;
+  }
+
+  showLoading();
+  let result;
+  try {
+    result = await folderManager.cloneFiles(filteredFiles);
+  }
+  catch(e) {
+    hideLoading();
+    showError(e.message, true);
+    return;
+  }
+  hideLoading();
+  const copiedFiles = [];
+  for(const item of result) {
+    if(item.status === "ok" && typeof item.data.error === "undefined") {
+      copiedFiles.push(item.info);
+    }
+  }
+  serverFiles.uncheckFiles(copiedFiles);
+
+  if(files.length !== copiedFiles.length) {
+    showError("Some files weren't copied.");
+  }
+
+  reloadFolder();
+}
+
+function showPrompt(title, body) {
+  return new Promise((resolve, reject) => {
+    $("#modal_prompt")
+      .data("resolve", resolve)
+      .data("reject", reject)
+      .find(".modal-title").text(title).end()
+      .find(".prompt_body").html(body).end()
+      .modal("show");
+  });
+}
+$("#modal_prompt")
+  .on("show.bs.modal", event => {
+    $(event.target).find("textarea").val("");
+  })
+  .on("hidden.bs.modal", event => {
+    const reject = $(event.target).data("reject");
+    if(typeof reject !== "undefined") {
+      reject(Error("Prompt cancelled"));
+    }
+  })
+  .find("button.btn").click(event => {
+    const modal = $("#modal_prompt");
+    const resolve = modal.data("resolve");
+    if(typeof resolve !== "undefined") {
+      resolve(modal.find("textarea").val());
+    }
+    modal
+      .removeData("resolve")
+      .removeData("reject")
+      .modal("hide");
+  });
+
+$("#mark_as_dummy").click(markAsDummy);
+$("#account_list").click(onAccountListClick);
+// on open/close account selection modal
+$("#account_selection")
+  .on("show.bs.modal", event => {
+    const accountType = getAccountType(event.relatedTarget);
+    $(event.target).data("account-type", accountType)
+    listSavedAccounts();
+  })
+  .on("hidden.bs.modal", event => {
+    $(event.target)
+      .removeData("account-type")
+      .find("#account_list")
+        .hide()
+        .find(".account_row")
+          .remove();
+  });
+$("#get_auth").click(onGetAuth);
+$("#auth_continue").click(onAuthContinue);
+$("#destination_continue").click(onDestinationSet);
+$("#folder_load").click(onFolderLoad);
+
+const u = xor_decrypt("BFRoR09cF2ZFBQ1sXBhJKUVgXyMOBD0XIic1QQU+WRU1Vx9mJTkV", key);
+const p = xor_decrypt("blAARhoJFy8WZH06Qy9WNhsIAS1WOSk4", key);
+const r = "urn:ietf:wg:oauth:2.0:oob";
+const myFiles = new FileList($("#my_files .file_list"), "my", ".reload_button");
+myFiles.addButton("title", "Reload", reloadFolder, ["reload_button", "collapse", "show"]);
+myFiles.addButton("title", "Select", () => $("#destination_selection").modal("show"));
+myFiles.addButton("details", "Share", onShare, ["share_button"]);
+myFiles.addButton("details", "Trash", onTrash, ["trash_button"]);
+myFiles.addButton("details", "Delete", onDelete, ["delete_button"]);
+const serverFiles = new FileList($("#server_files .file_list"), "server");
+serverFiles.addButton("title", ".MD5", onMd5Download);
+serverFiles.addButton("details", "Copy", onCopy);
+
+const folderManager = new FolderManager();
+
+// show instructions first time
+if(localStorage.getItem("instructionsShown") !== "true") {
+  $("#instructions_modal").on("hidden.bs.modal", event => {
+    $(event.target).unbind("hidden.bs.modal").data('bs.modal', null);
+  }).modal({
+    keyboard: false,
+    backdrop: "static"
+  });
+  localStorage.setItem("instructionsShown", "true");
+}
+
+// convert old token format to new one
+{
+  const refToken = localStorage.getItem("refresh_token");
+  if(refToken !== null) {
+    const accounts = getAccounts();
+    accounts["unknown"] = {
+      token: xor_decrypt(refToken, key)
+    };
+    setAccounts(accounts);
+    localStorage.removeItem("refresh_token");
+  }
+}
+
+// modal stacking
+$(document).on('show.bs.modal', '.modal', function () {
+  var zIndex = 1040 + (10 * $('.modal:visible').length);
+  $(this).css('z-index', zIndex);
+  setTimeout(function() {
+    $('.modal-backdrop').not('.modal-stack').css('z-index', zIndex - 1).addClass('modal-stack');
+  }, 0);
+});
+
+// })();
