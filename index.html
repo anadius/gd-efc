@@ -35,9 +35,30 @@ body {
 .account_row.loading .close, .account_row:not(.loading) .spinner-border {
   display: none;
 }
+
+/* dark mode */
+body.dark{color:#fff;background-color:#222;}
+body.dark .footer{background-color:#333;}
+body.dark .card{background-color:#303030;}
+body.dark .modal-content{background-color:#303030;border-color:#444;}
+body.dark .modal-header{border-bottom-color:#444;}
+body.dark .close{color:#fff;text-shadow:none;}
+body.dark .bg-primary{background-color:#375a7f !important;}
+body.dark .btn-primary{background-color:#375a7f;border-color:#375a7f;}
+body.dark .alert-primary{background-color:#375a7f;border-color:#23384f}
+body.dark .alert-danger{background-color:#e74c3c;border-color:#822920;}
+body.dark .alert-warning{background-color:#f39c12;border-color:#9d660e;}
+body.dark .alert{color:#fff;}
+body.dark .table,body.dark .table-hover tbody tr:hover{color:#fff;}
+body.dark .dark_switch,body:not(.dark) .light_switch{display:none;}
   </style>
 </head>
 <body>
+  <script type="text/javascript">
+    if(localStorage.getItem("theme") === "dark") {
+      document.body.classList.add("dark");
+    }
+  </script>
   <nav class="navbar navbar-expand navbar-dark bg-primary">
     <div class="container">
       <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
@@ -52,8 +73,11 @@ body {
           <li id="builder" class="nav-item" style="display: none;">
             <a class="nav-link" href="build.html">How to encrypt links</a>
           </li>
-          <li id="builder" class="nav-item">
+          <li class="nav-item">
             <a class="nav-link" data-toggle="modal" href="#instructions_modal">Instructions</a>
+          </li>
+          <li class="nav-item">
+            <a id="dark_toggle" class="nav-link" data-toggle="modal" href="#"><span class="dark_switch">Dark</span><span class="light_switch">Light</span> mode</a>
           </li>
         </ul>
       </div>
@@ -286,6 +310,17 @@ https://drive.google.com/open?id=&lt;folder id&gt;</code></pre>
   <script src="https://code.jquery.com/jquery-3.4.1.slim.min.js" integrity="sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js" integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo" crossorigin="anonymous"></script>
   <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js" integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6" crossorigin="anonymous"></script>
+  <script type="text/javascript">
+    $("#dark_toggle").click(event => {
+      event.preventDefault();
+      if($(document.body).toggleClass("dark").hasClass("dark")) {
+        localStorage.setItem("theme", "dark");
+      }
+      else {
+        localStorage.removeItem("theme");
+      }
+    });
+  </script>
   <script type="text/javascript">
     try {
       eval("class A { async * a() { yield 1; } }");
