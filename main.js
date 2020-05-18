@@ -87,16 +87,33 @@ class Account {
   }
   async getFolder(folderId) {
     const data1 = await this.apiRequest(
-      `files/${folderId}?supportsAllDrives=true&fields=name`
+      `files/${folderId}?supportsAllDrives=true&fields=name,mimeType`
     );
 
-    const data2 = await this.apiRequest(
-      `files?q="${folderId}"+in+parents`
-      + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.shortcut'"
-      + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.folder'"
-      + `&fields=files(id,webViewLink,size,originalFilename,mimeType)`
-      + "&orderBy=name_natural&supportsAllDrives=true&includeItemsFromAllDrives=true"
-    );
+    let data2;
+    if(data1.mimeType === "application/vnd.google-apps.folder") {
+      data2 = await this.apiRequest(
+        `files?q="${folderId}"+in+parents`
+        + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.shortcut'"
+        + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.folder'"
+        + `&fields=files(id,webViewLink,size,originalFilename,mimeType,md5Checksum)`
+        + "&orderBy=name_natural&supportsAllDrives=true&includeItemsFromAllDrives=true"
+      );
+    }
+    else if(data1.mimeType === "application/vnd.google-apps.shortcut") {
+      throw Error("Shortcuts are not supported.");
+    }
+    else {
+      const file = await this.apiRequest(
+        `files/${folderId}?supportsAllDrives=true&fields=webViewLink,size,originalFilename,md5Checksum`
+      );
+      file.id = folderId;
+      file.name = data1.name;
+      file.mimeType = data1.mimeType;
+      data2 = {
+        files: [file]
+      };
+    }
 
     return Object.assign(data2, data1);
   }
@@ -942,7 +959,7 @@ class FolderManager {
     this.initialized = false;
     this.encryptedIdOrUrl = encryptedIdOrUrl;
 
-    const m = encryptedIdOrUrl.match(/^https:\/\/drive\.google\.com\/(?:open\?id=|drive\/.*?folders\/)([0-9a-zA-Z\-_]+)/);
+    const m = encryptedIdOrUrl.match(/^https:\/\/drive\.google\.com\/(?:open\?id=|drive\/.*?folders\/|file\/(?:u\/\d+\/)?d\/)([0-9a-zA-Z\-_]+)/);
     if(m !== null) {
       this.idType = "normal";
       this.id = m[1];
