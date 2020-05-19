@@ -12,6 +12,8 @@ const IGNORED_MIMETYPE = new Set([
 ]);
 const MIXED_CONTENT = `<p>This could be because of "mixed content". The page you're on is served over HTTPS and tries to connect to another page that's served over HTTP - and your browser doesn't like that.</p><p>If you're on <b>Chrome</b> - click on the padlock icon, "Site settings", scroll to the bottom of the page and set "Insecure content" to "Allow"</p><p class="text-center"><img src="images/chrome1.png"></p><p class="text-center"><img src="images/chrome2.png"></p><p>If you're on <b>Firefox</b> - click on the padlock icon, click that arrow next to the "Firefox has blocked..." message and then on "Disable protection for now".</p><p class="text-center"><img src="images/firefox1.png"></p><p class="text-center"><img src="images/firefox2.png"></p>`;
 
+class ServerVersionError extends Error {}
+
 class Account {
   static async authenticate(code, refresh) {
     const acc = new Account();
@@ -52,6 +54,12 @@ class Account {
     }
     catch(e) {
       throw Error(text);
+    }
+
+    const version = responseData.version || 1;
+    if(version !== SERVER_VERSION) {
+      const contact = version > SERVER_VERSION ? "runs this site" : "shared encrypted ID";
+      throw new ServerVersionError(`Decryption server is running version ${version} of the code, this page works with version ${SERVER_VERSION}. Contact the person who ${contact} and tell them to update the code.`);
     }
 
     if(responseData.status === "ok") {
@@ -1137,6 +1145,9 @@ class FolderManager {
           info = await acc.serverRequest(server, this.id);
         }
         catch(e) {
+          if(e instanceof ServerVersionError) {
+            throw e;
+          }
           console.warn(server, e);
           continue;
         }
@@ -1178,6 +1189,9 @@ class FolderManager {
           result = await acc.serverRequest(server, this.id, files);
         }
         catch(e) {
+          if(e instanceof ServerVersionError) {
+            throw e;
+          }
           console.warn(server, e);
           continue;
         }
