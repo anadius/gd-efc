@@ -10,6 +10,7 @@ const showBuilder = false;
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
   <!-- Bootstrap CSS -->
   <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+  <link rel="stylesheet" href="dark.css">
   <title>Google Drive - encrypted folder copy</title>
   <style>
 html {
@@ -36,21 +37,7 @@ body {
   display: none;
 }
 
-/* dark mode */
-body.dark{color:#fff;background-color:#222;}
-body.dark .footer{background-color:#333;}
-body.dark .card{background-color:#303030;}
-body.dark .modal-content{background-color:#303030;border-color:#444;}
-body.dark .modal-header{border-bottom-color:#444;}
-body.dark .close{color:#fff;text-shadow:none;}
-body.dark .bg-primary{background-color:#375a7f !important;}
-body.dark .btn-primary{background-color:#375a7f;border-color:#375a7f;}
-body.dark .alert-primary{background-color:#375a7f;border-color:#23384f}
-body.dark .alert-danger{background-color:#e74c3c;border-color:#822920;}
-body.dark .alert-warning{background-color:#f39c12;border-color:#9d660e;}
-body.dark .alert{color:#fff;}
-body.dark .table,body.dark .table-hover tbody tr:hover{color:#fff;}
-body.dark .dark_switch,body:not(.dark) .light_switch{display:none;}
+pre{color:unset;}
   </style>
 </head>
 <body>
@@ -203,8 +190,8 @@ body.dark .dark_switch,body:not(.dark) .light_switch{display:none;}
       </div>
       <div class="modal-body">
         <p>Enter the folder URL in one of the following formats:</p>
-        <pre><code>https://drive.google.com/drive/folders/&lt;folder id&gt;
-https://drive.google.com/open?id=&lt;folder id&gt;</code></pre>
+        <code><pre>https://drive.google.com/drive/folders/&lt;folder id&gt;
+https://drive.google.com/open?id=&lt;folder id&gt;</pre></code>
         <p>Leave it empty or type <code>root</code> if you want to use main folder of your Google Drive.
         <div class="form-row align-items-center">
           <div class="col">

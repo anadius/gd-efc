@@ -5,9 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
   <!-- Bootstrap CSS -->
   <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+  <link rel="stylesheet" href="dark.css">
   <title>Google Drive - encrypted folder copy</title>
 </head>
 <body>
+  <script type="text/javascript">
+    if(localStorage.getItem("theme") === "dark") {
+      document.body.classList.add("dark");
+    }
+  </script>
   <nav class="navbar navbar-expand navbar-dark bg-primary">
     <div class="container">
       <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
@@ -21,6 +27,9 @@
           </li>
           <li class="nav-item active">
             <a class="nav-link" href="build.html">How to encrypt links</a>
+          </li>
+          <li class="nav-item">
+            <a id="dark_toggle" class="nav-link" data-toggle="modal" href="#"><span class="dark_switch">Dark</span><span class="light_switch">Light</span> mode</a>
           </li>
         </ul>
       </div>
@@ -107,6 +116,17 @@
   <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js" integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo" crossorigin="anonymous"></script>
   <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js" integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.4.0/dist/jszip.min.js" integrity="sha256-Uktz9Z+RdiKZoEPBkqU9DGKjNVUe9eVSlKB3EMd4uto=" crossorigin="anonymous"></script>
+  <script type="text/javascript">
+    $("#dark_toggle").click(event => {
+      event.preventDefault();
+      if($(document.body).toggleClass("dark").hasClass("dark")) {
+        localStorage.setItem("theme", "dark");
+      }
+      else {
+        localStorage.removeItem("theme");
+      }
+    });
+  </script>
   <script type="text/javascript">
     try {
       if(!String.prototype.hasOwnProperty("matchAll")) {
