@@ -1,14 +1,6 @@
 <?php
 
-function encrypt($textToEncrypt, $base64Key) {
-    $key = base64_decode($base64Key);
-    $method = 'aes-256-gcm';
-    $iv = openssl_random_pseudo_bytes(12);
-    $tag = '';
-
-    $ciphertext = openssl_encrypt($textToEncrypt, $method, $key, OPENSSL_RAW_DATA, $iv, $tag, '', 16);
-    return base64_encode($iv.$ciphertext.$tag);
-}
+{ENCRYPT_PHP_FUNCTION}
 
 function fail($reason, $status = 400) {
     http_response_code($status);

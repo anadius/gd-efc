@@ -166,8 +166,10 @@ const parseForm = async () => {
 
   if($("#php_decrypt").is(":checked")) {
     const DECRYPT_PHP = await getFile("templates/decrypt.php.template");
+    const ENCRYPT_PHP_FUNCTION = await getFile("templates/encrypt_function.php.template");
     zip.file("PHP/decrypt.php", DECRYPT_PHP
       .replace("{KEY}", KEY)
+      .replace("{ENCRYPT_PHP_FUNCTION}", ENCRYPT_PHP_FUNCTION)
       .replace("{ALLOW_SITES}", ALLOW_SITES)
     );
 
@@ -182,6 +184,7 @@ RewriteRule "^clone$" "decrypt.php?page=clone"
       const ENCRYPT_PHP = await getFile("templates/encrypt.php.template");
       zip.file("PHP/encrypt.php", ENCRYPT_PHP
         .replace("{KEY}", KEY)
+        .replace("{ENCRYPT_PHP_FUNCTION}", ENCRYPT_PHP_FUNCTION)
         .replace("{ENCRYPT_HTML}", ENCRYPT_HTML)
         .replace("{ENCRYPT_FUNCTION}", ENCRYPT_FUNCTION_SERVER)
         .replace("{OPTIONS_USED}", "")

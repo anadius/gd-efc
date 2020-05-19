@@ -1,5 +1,7 @@
 <?php
 
+{ENCRYPT_PHP_FUNCTION}
+
 function decrypt($base64IvCiphertext, $base64Key) {
     $ivCiphertext = base64_decode($base64IvCiphertext);
     $key = base64_decode($base64Key);
@@ -8,18 +10,29 @@ function decrypt($base64IvCiphertext, $base64Key) {
     $tag = substr($ivCiphertext, -16);
     $ciphertext = substr($ivCiphertext, 12, -16);
 
-    return openssl_decrypt($ciphertext, $method, $key, OPENSSL_RAW_DATA, $iv, $tag);
+    $decrypted = openssl_decrypt($ciphertext, $method, $key, OPENSSL_RAW_DATA, $iv, $tag);
+    if($decrypted === FALSE) {
+        throw new Exception('Can\'t decrypt, bad data.');
+    }
+
+    return $decrypted;
+}
+
+$KEY = '{KEY}';
+
+function encode($text) {
+    global $KEY;
+    return encrypt($text, $KEY);
 }
 
 function decode($encoded) {
-    return decrypt($encoded, '{KEY}');
+    global $KEY;
+    return decrypt($encoded, $KEY);
 }
 
 /* END OF DECRYPT FUNCTIONS */
 
-$API_URL = 'https://www.googleapis.com/drive/v3/files';
-$FIELDS_COMMON = 'size,originalFilename,md5Checksum';
-$VERSION = 2;
+$VERSION = 3;
 
 function fail($reason, $status = 400) {
     global $VERSION;
@@ -35,94 +48,144 @@ function success($data, $status = 200) {
     exit;
 }
 
-function getFolderInfo($data, $fields) {
-    global $API_URL;
-    $folder = decode($data['folder']);
-    $ch = curl_init($API_URL . '?q="' . $folder . '"+in+parents'
-        . '+and+mimeType+!%3D+"application%2Fvnd.google-apps.shortcut"'
-        . '+and+mimeType+!%3D+"application%2Fvnd.google-apps.folder"'
-        . '&fields=files(' . $fields . ')&orderBy=name_natural');
+function apiRequest($auth, $path, $options=array()) {
+    $headersDict = isset($options['headers']) ? $options['headers'] : array();
+    if(!isset($headersDict['Authorization'])) {
+        $headersDict['Authorization'] = 'Bearer ' . $auth;
+    }
+    if(!isset($headersDict['Accept'])) {
+        $headersDict['Accept'] = 'application/json';
+    }
+    $headers = array();
+    foreach($headersDict as $headerName => $headerValue) {
+        array_push($headers, $headerName . ': ' . $headerValue);
+    }
+
+    $ch = curl_init('https://www.googleapis.com/drive/v3/' . $path);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
     curl_setopt($ch, CURLOPT_HEADER, FALSE);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, array('Authorization: Bearer ' . $data['auth']));
-    $response = curl_exec($ch);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+    if(isset($options['body'])) {
+        curl_setopt($ch, CURLOPT_POST, TRUE);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $options['body']);
+    }
+
+    $text = curl_exec($ch);
     curl_close($ch);
-    $data1 = json_decode($response, TRUE);
 
-    $ch2 = curl_init($API_URL . '/' . $folder . '?fields=name');
-    curl_setopt($ch2, CURLOPT_RETURNTRANSFER, TRUE);
-    curl_setopt($ch2, CURLOPT_HEADER, FALSE);
-    curl_setopt($ch2, CURLOPT_HTTPHEADER, array('Authorization: Bearer ' . $data['auth']));
-    $response2 = curl_exec($ch2);
-    curl_close($ch2);
-    $data2 = json_decode($response2, TRUE);
+    $responseData = json_decode($text, TRUE);
+    if($responseData === NULL) {
+        throw new Exception($text);
+    }
 
-    $data1['name'] = $data2['name'];
-    return $data1;
+    if(isset($responseData['error'])) {
+        throw new Exception($responseData['error']['message']);
+    }
+
+    return $responseData;
 }
 
 $info = function($data) {
-    global $FIELDS_COMMON;
-    return getFolderInfo($data, 'mimeType,' . $FIELDS_COMMON);
+    $folderId = decode($data['folder']);
+
+    $folderInfo = apiRequest(
+        $data['auth'],
+        'files/' . $folderId . '?supportsAllDrives=true&fields=name,mimeType,shortcutDetails/*'
+    );
+
+    // if it's a folder, grab the contents
+    if($folderInfo['mimeType'] === 'application/vnd.google-apps.folder') {
+        $folderContents = apiRequest(
+            $data['auth'],
+            'files?q="' . $folderId . '"+in+parents'
+            . '+and+mimeType+!%3D+"application%2Fvnd.google-apps.folder"'
+            . '&fields=files(id,size,name,mimeType,md5Checksum,shortcutDetails/*)'
+            . '&orderBy=name_natural&supportsAllDrives=true&includeItemsFromAllDrives=true'
+        );
+    }
+    // if it's shortcut/file, set notLoaded to true and grab the info later
+    elseif($folderInfo['mimeType'] === 'application/vnd.google-apps.shortcut') {
+        $folderContents = array(
+            'files' => array(array(
+                'notLoaded' => TRUE,
+                'id' => $folderInfo['shortcutDetails']['targetId'],
+                'mimeType' => $folderInfo['shortcutDetails']['targetMimeType'],
+                'name' => $folderInfo['name']
+            ))
+        );
+        unset($folderInfo['shortcutDetails']);
+    }
+    else {
+        $folderContents = array(
+            'files' => array(array(
+                'notLoaded' => TRUE,
+                'id' => $folderId,
+                'mimeType' => $folderInfo['mimeType'],
+                'name' => $folderInfo['name']
+            ))
+        );
+        unset($folderInfo['shortcutDetails']);
+    }
+    unset($folderInfo['mimeType']);
+
+    $files = array();
+    foreach($folderContents['files'] as $file) {
+        if($file['mimeType'] === 'application/vnd.google-apps.shortcut') {
+            $file['notLoaded'] = TRUE;
+            $file['id'] = $file['shortcutDetails']['targetId'];
+            $file['mimeType'] = $file['shortcutDetails']['targetMimeType'];
+        }
+
+        if(isset($file['notLoaded']) && $file['notLoaded'] === TRUE) {
+            $fileInfo = apiRequest(
+                $data['auth'],
+                'files/' . $file['id'] . '?supportsAllDrives=true&fields=size,md5Checksum'
+            );
+            $fileInfo['id'] = $file['id'];
+            $fileInfo['mimeType'] = $file['mimeType'];
+            $fileInfo['name'] = $file['name'];
+        }
+        else {
+            $fileInfo = $file;
+        }
+
+        $fileInfo['id'] = encode($fileInfo['id']);
+        array_push($files, $fileInfo);
+    }
+
+    $folderContents['files'] = $files;
+
+    return array_merge($folderContents, $folderInfo);
 };
 
 function cloneOne($auth, $fileId, $folder) {
-    global $API_URL;
-    $ch = curl_init($API_URL . '/' . $fileId . '/copy?supportsAllDrives=true');
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
-    curl_setopt($ch, CURLOPT_HEADER, FALSE);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, array(
-        'Authorization: Bearer ' . $auth,
-        'Content-Type: application/json'
-    ));
-    curl_setopt($ch, CURLOPT_POST, TRUE);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(array(
-        'parents' => array($folder),
-        'appProperties' => array(
-            'createdWithDdEfc' => 1
+    return apiRequest(
+        $auth,
+        'files/' . $fileId . '/copy?supportsAllDrives=true',
+        array(
+            'headers' => array(
+                'Content-Type' => 'application/json'
+            ),
+            'body' => json_encode(array(
+                'parents' => array($folder),
+                'appProperties' => array(
+                    'createdWithDdEfc' => 1
+                )
+            ), JSON_UNESCAPED_SLASHES)
         )
-    ), JSON_UNESCAPED_SLASHES));
-    $response = curl_exec($ch);
-    curl_close($ch);
-    return json_decode($response, TRUE);
+    );
 }
 
 $clone = function($data) {
-    global $FIELDS_COMMON;
-    $folderInfo = getFolderInfo($data, 'id,' . $FIELDS_COMMON);
     $result = array();
-    foreach($folderInfo['files'] as $fileInfo) {
-        $found = FALSE;
-        for($i=0; $i<count($data['files']); ++$i) {
-            $requestedFileInfo = $data['files'][$i];
-            if($fileInfo['originalFilename'] === $requestedFileInfo['originalFilename'] &&
-               $fileInfo['md5Checksum'] === $requestedFileInfo['md5Checksum'] &&
-               $fileInfo['size'] === $requestedFileInfo['size']) {
-                array_splice($data['files'], $i, 1);
-                $found = TRUE;
-                break;
-            }
-        }
-
-        if($found) {
-            $cloneResult = cloneOne($data['auth'], $fileInfo['id'], $data['destination']);
-            unset($fileInfo['id']);
-            array_push($result, array(
-                'info' => $fileInfo,
-                'status' => 'ok',
-                'data' => $cloneResult
-            ));
-        }
-    }
-
-    if(count($data['files']) > 0) {
-        foreach($data['files'] as $requestedFileInfo) {
-            array_push($result, array(
-                'info' => $requestedFileInfo,
-                'status' => 'error',
-                'reason' => 'File not found'
-            ));
-        }
+    foreach($data['files'] as $id) {
+        $realId = decode($id);
+        $cloneResult = cloneOne($data['auth'], $realId, $data['destination']);
+        array_push($result, array(
+            'id' => $id,
+            'data' => $cloneResult
+        ));
     }
 
     return $result;
@@ -164,7 +227,7 @@ try {
     success($parser($requestData));
 }
 catch(Exception $e) {
-    fail($e.getMessage());
+    fail($e->getMessage());
 }
 
 ?>

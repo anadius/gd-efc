@@ -1,6 +1,6 @@
 // (async function() {
 
-const SERVER_VERSION = 2;
+const SERVER_VERSION = 3;
 const BLACKLIST = new Set([
   // add rogue servers here
 ]);
@@ -12,7 +12,7 @@ const IGNORED_MIMETYPE = new Set([
 ]);
 const MIXED_CONTENT = `<p>This could be because of "mixed content". The page you're on is served over HTTPS and tries to connect to another page that's served over HTTP - and your browser doesn't like that.</p><p>If you're on <b>Chrome</b> - click on the padlock icon, "Site settings", scroll to the bottom of the page and set "Insecure content" to "Allow"</p><p class="text-center"><img src="images/chrome1.png"></p><p class="text-center"><img src="images/chrome2.png"></p><p>If you're on <b>Firefox</b> - click on the padlock icon, click that arrow next to the "Firefox has blocked..." message and then on "Disable protection for now".</p><p class="text-center"><img src="images/firefox1.png"></p><p class="text-center"><img src="images/firefox2.png"></p>`;
 
-class ServerVersionError extends Error {}
+class ServerError extends Error {}
 
 class Account {
   static async authenticate(code, refresh) {
@@ -34,12 +34,15 @@ class Account {
     await this.renewToken();
 
     const data = {
-      folder: folderId,
       auth: this.accessToken
     };
-    let path = "/info";
 
-    if(typeof files !== "undefined") {
+    let path;
+    if(typeof files === "undefined") {
+      data.folder = folderId;
+      path = "/info";
+    }
+    else {
       data.files = files;
       data.destination = this.folder;
       path = "/clone";
@@ -59,7 +62,7 @@ class Account {
     const version = responseData.version || 1;
     if(version !== SERVER_VERSION) {
       const contact = version > SERVER_VERSION ? "runs this site" : "shared encrypted ID";
-      throw new ServerVersionError(`Decryption server is running version ${version} of the code, this page works with version ${SERVER_VERSION}. Contact the person who ${contact} and tell them to update the code.`);
+      throw new ServerError(`Decryption server is running version ${version} of the code, this page works with version ${SERVER_VERSION}. Contact the person who ${contact} and tell them to update the code.`);
     }
 
     if(responseData.status === "ok") {
@@ -69,7 +72,7 @@ class Account {
       return responseData.data;
     }
     else if(responseData.status === "error") {
-      throw Error(responseData.reason);
+      throw new ServerError(responseData.reason);
     }
     else {
       throw Error(text);
@@ -78,7 +81,7 @@ class Account {
 
   async cloneFile(fileId) {
     return this.apiRequest(
-      `files/${fileId}/copy?supportsAllDrives=true&fields=id,size,originalFilename,webViewLink`,
+      `files/${fileId}/copy?supportsAllDrives=true&fields=id,size,name,webViewLink`,
       {
         headers: {
           "Content-Type": "application/json"
@@ -94,36 +97,75 @@ class Account {
     );
   }
   async getFolder(folderId) {
-    const data1 = await this.apiRequest(
-      `files/${folderId}?supportsAllDrives=true&fields=name,mimeType`
+    const folderInfo = await this.apiRequest(
+      `files/${folderId}?supportsAllDrives=true&fields=name,mimeType,shortcutDetails/*`
     );
 
-    let data2;
-    if(data1.mimeType === "application/vnd.google-apps.folder") {
-      data2 = await this.apiRequest(
+    let folderContents;
+    // if it's a folder, grab the contents
+    if(folderInfo.mimeType === "application/vnd.google-apps.folder") {
+      folderContents = await this.apiRequest(
         `files?q="${folderId}"+in+parents`
-        + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.shortcut'"
         + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.folder'"
-        + `&fields=files(id,webViewLink,size,originalFilename,mimeType,md5Checksum)`
+        + "&fields=files(id,webViewLink,size,name,mimeType,md5Checksum,shortcutDetails/*)"
         + "&orderBy=name_natural&supportsAllDrives=true&includeItemsFromAllDrives=true"
       );
     }
-    else if(data1.mimeType === "application/vnd.google-apps.shortcut") {
-      throw Error("Shortcuts are not supported.");
+    // if it's shortcut/file, set notLoaded to true and grab the info later
+    else if(folderInfo.mimeType === "application/vnd.google-apps.shortcut") {
+      folderContents = {
+        files: [{
+          notLoaded: true,
+          id: folderInfo.shortcutDetails.targetId,
+          mimeType: folderInfo.shortcutDetails.targetMimeType,
+          name: folderInfo.name
+        }]
+      }
+      delete folderInfo.shortcutDetails;
     }
     else {
-      const file = await this.apiRequest(
-        `files/${folderId}?supportsAllDrives=true&fields=webViewLink,size,originalFilename,md5Checksum`
-      );
-      file.id = folderId;
-      file.name = data1.name;
-      file.mimeType = data1.mimeType;
-      data2 = {
-        files: [file]
-      };
+      folderContents = {
+        files: [{
+          notLoaded: true,
+          id: folderId,
+          mimeType: folderInfo.mimeType,
+          name: folderInfo.name
+        }]
+      }
+    }
+    delete folderInfo.mimeType;
+
+    const files = [];
+    for(const file of folderContents.files) {
+      // set notLoaded to true for shortcuts
+      if(file.mimeType === "application/vnd.google-apps.shortcut") {
+        file.notLoaded = true;
+        file.id = file.shortcutDetails.targetId;
+        file.mimeType = file.shortcutDetails.targetMimeType;
+      }
+
+      let fileInfo;
+      if(file.notLoaded === true) {
+        fileInfo = await this.apiRequest(
+          `files/${file.id}?supportsAllDrives=true&fields=webViewLink,size,md5Checksum`
+        );
+        fileInfo.id = file.id;
+        fileInfo.mimeType = file.mimeType;
+        fileInfo.name = file.name;
+      }
+      else {
+        fileInfo = file;
+      }
+
+      files.push(fileInfo);
     }
 
-    return Object.assign(data2, data1);
+    folderContents.files = files;
+
+    const asd = Object.assign(folderContents, folderInfo);
+    console.log(asd);
+    return asd;
+    // return Object.assign(folderContents, folderInfo);
   }
 
   async getMyFolder() {
@@ -161,7 +203,7 @@ class Account {
       + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.shortcut'"
       + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.folder'"
       + "+and+appProperties+has+%7B+key%3D'createdWithDdEfc'+and+value%3D'1'+%7D"
-      + `&fields=files(id,webViewLink,permissionIds,size,originalFilename,mimeType,trashed)`
+      + `&fields=files(id,webViewLink,permissionIds,size,name,mimeType,trashed)`
       + "&orderBy=name_natural&supportsAllDrives=true&includeItemsFromAllDrives=true"
     );
 
@@ -391,10 +433,9 @@ class FileList {
     return files;
   }
 
-  uncheckFiles(files) {
-    for(const file of files) {
-      const fileId = getFileId(file);
-      this.files[fileId].element.find("input[type=checkbox]").prop("checked", false);
+  uncheckFiles(ids) {
+    for(const id of ids) {
+      this.files[id].element.find("input[type=checkbox]").prop("checked", false);
     }
     this.clearCheckAll();
   }
@@ -430,20 +471,19 @@ class FileList {
     if(IGNORED_MIMETYPE.has(file.mimeType)) {
       return;
     }
-    const fileId = getFileId(file);
+    const fileId = file.id;
     // ignore duplicates (only for encrypted folders, they don't return real IDs)
     if(typeof this.files[fileId] !== "undefined") {
       return;
     }
     
     const size = Number(file.size);
-    const id = `check_${this.name}_${this.count}`;
     const fileRow = $("#templates .file_row").clone()
-      .find("input[type=checkbox]").attr("id", id).data("id", fileId).end()
-      .find(".filename").attr("for", id).text(`${file.originalFilename} `).end()
+      .find("input[type=checkbox]").attr("id", fileId).data("id", fileId).end()
+      .find(".filename").attr("for", fileId).text(`${file.name} `).end()
       .find(".filesize").text(formatSize(size)).end();
 
-    if(typeof file.id !== "undefined") {
+    if(typeof file.webViewLink !== "undefined") {
       fileRow.find(".filename").append(
         $("<a>Download</a>").attr("href", file.webViewLink)
       );
@@ -965,7 +1005,7 @@ class FolderManager {
     this.initialized = false;
     this.encryptedIdOrUrl = encryptedIdOrUrl;
 
-    const m = encryptedIdOrUrl.match(/^https:\/\/drive\.google\.com\/(?:open\?id=|drive\/.*?folders\/|file\/(?:u\/\d+\/)?d\/)([0-9a-zA-Z\-_]+)/);
+    const m = encryptedIdOrUrl.match(/^https:\/\/drive\.google\.com\/(?:folderview\?id=|open\?id=|drive\/(?:u\/\d+\/)?folders\/|file\/(?:u\/\d+\/)?d\/)([0-9a-zA-Z\-_]+)/);
     if(m !== null) {
       this.idType = "normal";
       this.id = m[1];
@@ -1145,7 +1185,7 @@ class FolderManager {
           info = await acc.serverRequest(server, this.id);
         }
         catch(e) {
-          if(e instanceof ServerVersionError) {
+          if(e instanceof ServerError) {
             throw e;
           }
           console.warn(server, e);
@@ -1169,8 +1209,7 @@ class FolderManager {
       for(const file of files) {
         const newFile = await accounts.main.cloneFile(file.id);
         result.push({
-          info: file,
-          status: "ok",
+          id: file.id,
           data: newFile
         });
         myFiles.addFile(newFile);
@@ -1183,13 +1222,14 @@ class FolderManager {
       }
       const acc = typeof accounts.dummy === "undefined" ? accounts.main : accounts.dummy;
 
+      const ids = files.map(x => x.id);
       for await(const server of this.getDecryptionServer()) {
         let result;
         try {
-          result = await acc.serverRequest(server, this.id, files);
+          result = await acc.serverRequest(server, this.id, ids);
         }
         catch(e) {
-          if(e instanceof ServerVersionError) {
+          if(e instanceof ServerError) {
             throw e;
           }
           console.warn(server, e);
@@ -1232,11 +1272,10 @@ async function onFolderLoad(event) {
 
   $("#server_files").show();
 }
-
 function onMd5Download(files) {
   const lines = [];
   for(const file of files) {
-    lines.push(`${file.md5Checksum} *${file.originalFilename}`);
+    lines.push(`${file.md5Checksum} *${file.name}`);
   }
   lines.push("");
 
@@ -1275,15 +1314,15 @@ async function onCopy(files) {
     return;
   }
   hideLoading();
-  const copiedFiles = [];
+  const copiedIds = [];
   for(const item of result) {
-    if(item.status === "ok" && typeof item.data.error === "undefined") {
-      copiedFiles.push(item.info);
+    if(typeof item.data.error === "undefined") {
+      copiedIds.push(item.id);
     }
   }
-  serverFiles.uncheckFiles(copiedFiles);
+  serverFiles.uncheckFiles(copiedIds);
 
-  if(files.length !== copiedFiles.length) {
+  if(files.length !== copiedIds.length) {
     showError("Some files weren't copied.");
   }
 

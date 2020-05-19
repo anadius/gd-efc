@@ -2,6 +2,10 @@
 
 const KEY = "{KEY}";
 
+async function encode(text) {
+  return encrypt(text, KEY);
+}
+
 async function decode(encoded) {
   return decrypt(encoded, KEY);
 }
@@ -15,9 +19,7 @@ const CORS_HEADERS = {
 const DEFAULT_HEADERS = Object.assign({
   "Content-Type": "application/json"
 }, CORS_HEADERS);
-const API_URL = "https://www.googleapis.com/drive/v3/files";
-const FIELDS_COMMON = "size,originalFilename,md5Checksum";
-const VERSION = 2;
+const VERSION = 3;
 
 addEventListener("fetch", event => {
   event.respondWith(handleRequest(event.request))
@@ -43,37 +45,110 @@ function success(data, status) {
   );
 }
 
-async function getFolderInfo(data, fields) {
-  const folder = await decode(data.folder);
-  const response = await fetch(
-    `${API_URL}?q="${folder}"+in+parents`
-    + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.shortcut'"
-    + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.folder'"
-    + `&fields=files(${fields})&orderBy=name_natural`,
-    {headers: {"Authorization": `Bearer ${data.auth}`}}
-  );
-  const data1 = await response.json();
+async function apiRequest(auth, path, options) {
+  const opt = options || {};
+  opt.headers = opt.headers || {};
+  opt.headers.Authorization = opt.headers.Authorization || `Bearer ${auth}`;
+  opt.headers.Accept = opt.headers.Accept || "application/json";
 
-  const response2 = await fetch(
-    `${API_URL}/${folder}?fields=name`,
-    {headers: {"Authorization": `Bearer ${data.auth}`}}
-  )
-  const data2 = await response2.json();
+  const result = await fetch(`https://www.googleapis.com/drive/v3/${path}`, opt);
 
-  data1.name = data2.name;
-  return data1;
+  const text = await result.text();
+  let responseData;
+  try {
+    responseData = JSON.parse(text);
+  }
+  catch(e) {
+    throw Error(text);
+  }
+
+  if(typeof responseData.error !== "undefined") {
+    throw Error(responseData.error.message);
+  }
+  return responseData;
 }
 
 async function info(data) {
-  return await getFolderInfo(data, `mimeType,${FIELDS_COMMON}`);
+  const folderId = await decode(data.folder);
+
+  const folderInfo = await apiRequest(
+    data.auth,
+    `files/${folderId}?supportsAllDrives=true&fields=name,mimeType,shortcutDetails/*`
+  );
+
+  let folderContents;
+  // if it's a folder, grab the contents
+  if(folderInfo.mimeType === "application/vnd.google-apps.folder") {
+    folderContents = await apiRequest(
+      data.auth,
+      `files?q="${folderId}"+in+parents`
+      + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.folder'"
+      + "&fields=files(id,size,name,mimeType,md5Checksum,shortcutDetails/*)"
+      + "&orderBy=name_natural&supportsAllDrives=true&includeItemsFromAllDrives=true"
+    );
+  }
+  // if it's shortcut/file, set notLoaded to true and grab the info later
+  else if(folderInfo.mimeType === "application/vnd.google-apps.shortcut") {
+    folderContents = {
+      files: [{
+        notLoaded: true,
+        id: folderInfo.shortcutDetails.targetId,
+        mimeType: folderInfo.shortcutDetails.targetMimeType,
+        name: folderInfo.name
+      }]
+    }
+    delete folderInfo.shortcutDetails;
+  }
+  else {
+    folderContents = {
+      files: [{
+        notLoaded: true,
+        id: folderId,
+        mimeType: folderInfo.mimeType,
+        name: folderInfo.name
+      }]
+    }
+  }
+  delete folderInfo.mimeType;
+
+  const files = [];
+  for(const file of folderContents.files) {
+    // set notLoaded to true for shortcuts
+    if(file.mimeType === "application/vnd.google-apps.shortcut") {
+      file.notLoaded = true;
+      file.id = file.shortcutDetails.targetId;
+      file.mimeType = file.shortcutDetails.targetMimeType;
+    }
+
+    let fileInfo;
+    if(file.notLoaded === true) {
+      fileInfo = await this.apiRequest(
+        data.auth,
+        `files/${file.id}?supportsAllDrives=true&fields=size,md5Checksum`
+      );
+      fileInfo.id = file.id;
+      fileInfo.mimeType = file.mimeType;
+      fileInfo.name = file.name;
+    }
+    else {
+      fileInfo = file;
+    }
+
+    fileInfo.id = await encode(fileInfo.id);
+    files.push(fileInfo);
+  }
+
+  folderContents.files = files;
+
+  return Object.assign(folderContents, folderInfo);
 }
 
 async function cloneOne(auth, fileId, folder) {
-  const response = await fetch(
-    `${API_URL}/${fileId}/copy?supportsAllDrives=true`,
+  return apiRequest(
+    auth,
+    `files/${fileId}/copy?supportsAllDrives=true`,
     {
       headers: {
-        "Authorization": `Bearer ${auth}`,
         "Content-Type": "application/json"
       },
       method: "POST",
@@ -85,44 +160,17 @@ async function cloneOne(auth, fileId, folder) {
       })
     }
   );
-  return await response.json();
 }
 
 async function clone(data) {
-  const folderInfo = await getFolderInfo(data, `id,${FIELDS_COMMON}`);
   const result = [];
-  for(const fileInfo of folderInfo.files) {
-    let found = false;
-    for(let i=0; i<data.files.length; ++i) {
-      const requestedFileInfo = data.files[i];
-      if(fileInfo.originalFilename === requestedFileInfo.originalFilename &&
-         fileInfo.md5Checksum === requestedFileInfo.md5Checksum &&
-         fileInfo.size === requestedFileInfo.size) {
-        data.files.splice(i, 1);
-        found = true;
-        break;
-      }
-    }
-
-    if(found) {
-      const cloneResult = await cloneOne(data.auth, fileInfo.id, data.destination);
-      delete fileInfo.id;
-      result.push({
-        info: fileInfo,
-        status: "ok",
-        data: cloneResult
-      });
-    }
-  }
-
-  if(data.files.length > 0) {
-    for(const requestedFileInfo of data.files) {
-      result.push({
-        info: requestedFileInfo,
-        status: "error",
-        reason: "File not found"
-      });
-    }
+  for(const id of data.files) {
+    const realId = await decode(id);
+    const cloneResult = await cloneOne(data.auth, realId, data.destination);
+    result.push({
+      id: id,
+      data: cloneResult
+    });
   }
 
   return result;
