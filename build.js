@@ -173,7 +173,8 @@ const parseForm = async () => {
       .replace("{ALLOW_SITES}", ALLOW_SITES)
     );
 
-    let htaccess = `RewriteEngine on
+    let htaccess = `Options -Indexes
+RewriteEngine on
 RewriteRule "^info$" "decrypt.php?page=info"
 RewriteRule "^clone$" "decrypt.php?page=clone"
 `;
