@@ -84,7 +84,7 @@ async function info(data) {
       `files?q="${folderId}"+in+parents`
       + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.folder'"
       + "&fields=files(id,size,name,mimeType,md5Checksum,shortcutDetails/*)"
-      + "&orderBy=name_natural&supportsAllDrives=true&includeItemsFromAllDrives=true"
+      + "&orderBy=name_natural&supportsAllDrives=true&includeItemsFromAllDrives=true&pageSize=1000"
     );
   }
   // if it's shortcut/file, set notLoaded to true and grab the info later

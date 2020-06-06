@@ -108,7 +108,7 @@ class Account {
         `files?q="${folderId}"+in+parents`
         + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.folder'"
         + "&fields=files(id,webViewLink,size,name,mimeType,md5Checksum,shortcutDetails/*)"
-        + "&orderBy=name_natural&supportsAllDrives=true&includeItemsFromAllDrives=true"
+        + "&orderBy=name_natural&supportsAllDrives=true&includeItemsFromAllDrives=true&pageSize=1000"
       );
     }
     // if it's shortcut/file, set notLoaded to true and grab the info later
@@ -204,7 +204,7 @@ class Account {
       + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.folder'"
       + "+and+appProperties+has+%7B+key%3D'createdWithDdEfc'+and+value%3D'1'+%7D"
       + `&fields=files(id,webViewLink,permissionIds,size,name,mimeType,trashed)`
-      + "&orderBy=name_natural&supportsAllDrives=true&includeItemsFromAllDrives=true"
+      + "&orderBy=name_natural&supportsAllDrives=true&includeItemsFromAllDrives=true&pageSize=1000"
     );
 
     return Object.assign(data2, data1);
