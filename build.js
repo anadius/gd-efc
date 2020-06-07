@@ -59,7 +59,7 @@ const parseServer = url => {
 };
 
 const parseServerList = url => {
-  let m = url.match(/^https:\/\/gist\.github\.com\/([^\/]+\/[0-9a-f]+)\/raw\/[0-9a-f]+\/(.+?)$/);
+  let m = url.match(/^https:\/\/gist\.(?:github|githubusercontent)\.com\/([^\/]+\/[0-9a-f]+)\/raw\/[0-9a-f]+\/(.+?)$/);
   if(m !== null) {
     return `g:${m[1]}<${m[2]}`;
   }
