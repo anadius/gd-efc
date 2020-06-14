@@ -22,3 +22,4 @@ body.dark .custom-checkbox .custom-control-input:disabled:checked ~ .custom-cont
 body.dark .custom-control-input:focus ~ .custom-control-label::before{box-shadow:0 0 0 0.2rem rgba(55,90,127,0.25);}
 body.dark hr,body.dark .table td,body.dark .table th{border-color:rgba(255,255,255,0.3);}
 body.dark .dark_switch,body:not(.dark) .light_switch{display:none;}
+body.dark .donate-image{filter: invert(81%);}

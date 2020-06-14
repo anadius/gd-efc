@@ -19,16 +19,19 @@ html {
 }
 body {
   /* Margin bottom by footer height */
-  margin-bottom: 60px;
+  margin-bottom: 90px;
 }
 .footer {
   position: absolute;
   bottom: 0;
   width: 100%;
   /* Set the fixed height of the footer here */
-  height: 60px;
-  line-height: 60px; /* Vertically center the text there */
+  height: 90px;
+  line-height: 30px;
   background-color: #eee;
+}
+.footer > .container {
+  padding: 15px 0;
 }
 #account_list table td:first-child {
   cursor: pointer;
@@ -147,7 +150,8 @@ pre{color:unset;}
 
   <footer class="footer">
     <div class="container">
-      <span class="text-muted">made by <b>anadius</b> | <a href="https://github.com/anadius/gd-efc">Github</a> | <a href="https://discord.gg/mWgKtsD">Discord</a> | <a href="https://www.reddit.com/u/anadius1">Reddit</a></span>
+      <div class="text-muted">made by <b>anadius</b> | <a data-toggle="modal" href="#donate">Donate</a> | <a href="https://github.com/anadius/gd-efc">Github</a> (free source code) | <a href="https://discord.gg/mWgKtsD">Discord</a> | <a href="https://www.reddit.com/u/anadius1">Reddit</a></div>
+      <div class="text-muted">If you paid for this script you were scammed!</div>
     </div>
   </footer>
 
@@ -279,6 +283,8 @@ https://drive.google.com/open?id=&lt;folder id&gt;</pre></code>
   </div>
 </div>
 
+<div class="modal fade" id="donate" tabindex="-1" role="dialog" aria-hidden="true"><div class="modal-dialog modal-dialog-scrollable modal-lg" role="document"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Donate</h5><button type="button" class="close" data-dismiss="modal"><span>&times;</span></button></div><div class="modal-body"><p>If you like this project you can donate to me (person who made this page/script, not the person who shared the encrypted folder!). You can send <a href="https://www.amazon.de/Digitaler-Amazon-Gutschein-Blaues-Amazon/dp/B07Q1JNC7R/?language=en_GB">Amazon Gift Cards</a> or anything else you want to <img class="donate-image" src=" data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHMAAAAWCAIAAAB8GDRYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAILSURBVFhH7VbZdQIxDEyTdEIl28f2QR8UQnRZl+UsL4m5nudLkkdjaeIAX7eFOVjOzsJydhaWs7OwnJ2FRzl72U6n7SLReb9S8XdAKQ+WfTk83tm/gEyNf5frfn5NeytnZVhBm5ne2kWP3H41H6Cv67zv/ZuNZrvM6XkXsVy/dmoYzNnK3I1jtLJOZ0M03EUejNnQOxsWJkHOWFtOMBG5Ed8b4Xsh5nJotMyXXYxyLiSAjqi5y7AndHHMTVz2FNdpOCaHtlLj6NPAdrMIETOD1hMh6PAUkTFqFMDwtlI7R6oktlzqb6nvC5zqvkNybsKGJDJyFlsbuCWKZenMt00ZdjUwf3SW11IhBtSqJlO1+1Sf0Q6MAPCcqMg4IuN5ByUx6k8D49m9cYJY7/lhNgDmyueDkaBAdJkMCR0mFqTVnPlizI/MCjgi5+0qdM6mwezeOIFmI36ku1QbIiPxBc4XatJmQhBt3Umopf/qbNmUUDmrPXhBezVJTLMhnxI5QVJLIO4J3FkKEhmDdGotXijeRYndxhGXfWzNgmMy3RnKmgiKz1mkCUBEtTQguGzAB/DygPJXF8eNgL+TesEgpf0EEHEhkQhY3DYTlqM7nLXqHWS3HUAJhtE32OshbNuB1qSd/fLPxPs4C0DTCtuoXD6rZ+KtnCX4f0JGfMnL2U/HcnYWlrOzsJydg9vtG7hDy+03ULxsAAAAAElFTkSuQmCC">.</p></div></div></div></div>
+
 <div id="templates" class="d-none">
 
 <table><tbody>
@@ -325,6 +331,6 @@ https://drive.google.com/open?id=&lt;folder id&gt;</pre></code>
     }
   </script>
   <script src="common.js"></script>
-  <script src="main.js"></script>
+  <script src="main.obf.js"></script>
 </body>
 </html>
