@@ -191,7 +191,8 @@ pre{color:unset;}
         <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
       </div>
       <div class="modal-body">
-        <p>Enter the folder URL in one of the following formats:</p>
+        <div id="drive_select"></div>
+        <p>Or enter the folder URL in one of the following formats:</p>
         <code><pre>https://drive.google.com/drive/folders/&lt;folder id&gt;
 https://drive.google.com/open?id=&lt;folder id&gt;</pre></code>
         <p>Leave it empty or type <code>root</code> if you want to use main folder of your Google Drive.
@@ -218,6 +219,7 @@ https://drive.google.com/open?id=&lt;folder id&gt;</pre></code>
       <div class="modal-body">
         <div class="prompt_body"></div>
         <textarea class="form-control my-3" rows="3"></textarea>
+        <input class="form-control my-3" type="text">
         <button class="btn btn-primary btn-block">Continue</button>
       </div>
     </div>
@@ -290,6 +292,7 @@ https://drive.google.com/open?id=&lt;folder id&gt;</pre></code>
 <table><tbody>
   <tr class="account_row"><td class="col"></td><td class="col-auto" style="padding-top: 2px;"><button type="button" class="close remove-acc"><span class="remove-acc">&times;</span></button><div role="status" class="spinner-border spinner-border-sm"></div></td></tr>
   <tr class="file_row"><td><div class="custom-control custom-checkbox"><input type="checkbox" class="custom-control-input"><label class="filename custom-control-label"></label></div></td><td class="filesize text-right"></td></tr>
+  <tr class="folder_row"><td colspan="2"></td></tr>
 </tbody></table>
 
 <div class="file_button col-3 col-md-2"><button class="btn btn-primary btn-block"></button></div>
