@@ -32,7 +32,7 @@ function decode($encoded) {
 
 /* END OF DECRYPT FUNCTIONS */
 
-$VERSION = 3;
+$VERSION = 4;
 
 function fail($reason, $status = 400) {
     global $VERSION;
@@ -99,9 +99,9 @@ $info = function($data) {
         $folderContents = apiRequest(
             $data['auth'],
             'files?q="' . $folderId . '"+in+parents'
-            . '+and+mimeType+!%3D+"application%2Fvnd.google-apps.folder"'
-            . '&fields=files(id,size,name,mimeType,md5Checksum,shortcutDetails/*)'
-            . '&orderBy=name_natural&supportsAllDrives=true&includeItemsFromAllDrives=true&pageSize=1000'
+            . '&fields=nextPageToken,files(id,size,name,mimeType,md5Checksum,shortcutDetails/*)'
+            . '&orderBy=name_natural&supportsAllDrives=true&includeItemsFromAllDrives=true&pageSize=100'
+            . (isset($data['pageToken']) ? '&pageToken=' . $data['pageToken'] : '')
         );
     }
     // if it's shortcut/file, set notLoaded to true and grab the info later
@@ -138,6 +138,10 @@ $info = function($data) {
         }
 
         if(isset($file['notLoaded']) && $file['notLoaded'] === TRUE) {
+            // ignore shortcuts to folders
+            if($file['mimeType'] === 'application/vnd.google-apps.folder') {
+                continue;
+            }
             $fileInfo = apiRequest(
                 $data['auth'],
                 'files/' . $file['id'] . '?supportsAllDrives=true&fields=size,md5Checksum'

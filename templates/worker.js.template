@@ -19,7 +19,7 @@ const CORS_HEADERS = {
 const DEFAULT_HEADERS = Object.assign({
   "Content-Type": "application/json"
 }, CORS_HEADERS);
-const VERSION = 3;
+const VERSION = 4;
 
 addEventListener("fetch", event => {
   event.respondWith(handleRequest(event.request))
@@ -82,9 +82,9 @@ async function info(data) {
     folderContents = await apiRequest(
       data.auth,
       `files?q="${folderId}"+in+parents`
-      + "+and+mimeType+!%3D+'application%2Fvnd.google-apps.folder'"
-      + "&fields=files(id,size,name,mimeType,md5Checksum,shortcutDetails/*)"
-      + "&orderBy=name_natural&supportsAllDrives=true&includeItemsFromAllDrives=true&pageSize=1000"
+      + "&fields=nextPageToken,files(id,size,name,mimeType,md5Checksum,shortcutDetails/*)"
+      + "&orderBy=name_natural&supportsAllDrives=true&includeItemsFromAllDrives=true&pageSize=100"
+      + (typeof data.pageToken !== "undefined" ? `&pageToken=${data.pageToken}` : '')
     );
   }
   // if it's shortcut/file, set notLoaded to true and grab the info later
@@ -122,6 +122,10 @@ async function info(data) {
 
     let fileInfo;
     if(file.notLoaded === true) {
+      // ignore shortcuts to folders
+      if(file.mimeType === "application/vnd.google-apps.folder") {
+        continue;
+      }
       fileInfo = await this.apiRequest(
         data.auth,
         `files/${file.id}?supportsAllDrives=true&fields=size,md5Checksum`
