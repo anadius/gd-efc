@@ -20,7 +20,8 @@
             <button id="encrypt" class="btn btn-primary btn-block">Encrypt</button>
           </div>
         </div>
-        <input id="encrypted_link" type="text" class="form-control" placeholder="encrypted link">
+        <input id="encrypted_link" type="text" class="form-control" placeholder="encrypted ID">
+        <p class="mt-3">You can share the decryption website and encrypted ID separately or combine them together with <code>#</code> like this: <code>https://example.com/#ABCD.1234</code></p>
       </div>
       {OPTIONS_USED}
     </div>
