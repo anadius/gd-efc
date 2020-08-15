@@ -37,7 +37,7 @@
 
 async function encryptFolder() {
   const link = document.querySelector("#folder_link").value;
-  const m = link.match(/^https:\/\/drive\.google\.com\/(?:folderview\?id=|open\?id=|drive\/(?:u\/\d+\/)?folders\/|file\/(?:u\/\d+\/)?d\/)([0-9a-zA-Z\-_]+)/);
+  const m = link.match(/^https:\/\/drive\.google\.com\/(?:folderview\?id=|open\?id=|drive\/(?:u\/\d+\/)?folders\/|file\/(?:u\/\d+\/)?d\/|uc\?id=)([0-9a-zA-Z\-_]+)/);
   if(m === null) {
     throw Error("bad link!");
   }
