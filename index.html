@@ -12,6 +12,10 @@ and then you can share those IDs instead: 1234, 5678
 */
 const encryptedIdPrefix = '';
 
+/* if you don't want to use rclone OAuth credentials you can always use your own */
+const defaultClientId = '';
+const defaultClientSecret = '';
+
   </script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
@@ -175,6 +179,34 @@ pre{color:unset;}
         </div>
         <h5>Add another account:</h5>
         <div class="form-row align-items-center pb-3">
+          <div class="col">
+            <div class="custom-control custom-checkbox">
+              <input type="checkbox" class="custom-control-input" id="custom_oauth" data-toggle="collapse" data-target="#custom_oauth_rows" autocomplete="off">
+              <label class="custom-control-label" for="custom_oauth">Use custom OAuth credentials </label>
+              <span id="custom_oauth_info1"> <a data-toggle="modal" href="#oauth_modal">(what is that?)</a></span>
+              <span id="custom_oauth_info2"> (log out from all accounts to change)</span>
+            </div>
+          </div>
+        </div>
+        <div id="custom_oauth_rows2"><div id="custom_oauth_rows" class="collapse">
+          <div class="form-row align-items-center pb-3">
+            <div class="col">
+              <input id="client_id" type="text" class="form-control" placeholder="Paste client ID here">
+            </div>
+            <div class="col-3 col-lg-2">
+              <button id="reset_oauth" class="btn btn-primary btn-block">Reset</button>
+            </div>
+          </div>
+          <div class="form-row align-items-center pb-3">
+            <div class="col">
+              <input id="client_secret" type="text" class="form-control" placeholder="Paste client secret here">
+            </div>
+            <div class="col-3 col-lg-2">
+              <button id="save_oauth" class="btn btn-primary btn-block">Save</button>
+            </div>
+          </div>
+        </div></div>
+        <div class="form-row align-items-center pb-3">
           <div class="col-3 col-lg-2">
             <button id="get_auth" class="btn btn-primary btn-block">Get auth</button>
           </div>
@@ -287,6 +319,22 @@ https://drive.google.com/open?id=&lt;folder id&gt;</pre></code>
         <p>If you're just downloading files - use a dummy acc. Copy files to your drive, download them and then delete from your drive.</p>
         <div class="alert alert-primary">Tip: if your destination folder is already made public all files copied to it are public too, that saves you some time.</div>
         <p>If you want to store files on your main account - open two tabs. In the first tab log into your dummy account and use encrypted folder ID to copy files to dummy account. In second tab log into your main account and use folder link from the dummy account to copy files from dummy account to your main one.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="oauth_modal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Custom OAuth credentials</h5>
+        <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+      </div>
+      <div class="modal-body">
+        <p>If you're tired of getting "Rate Limit Exceeded" error or just don't want to use <code>rclone</code> credentials you can always use your own. To do this you need to create a Google Drive app.</p>
+        <p>The quickest way: open <a href="https://developers.google.com/drive/api/v3/quickstart/python#step_1_turn_on_the">this link</a>, click on the <b>Enable the Drive API</b> button, click <b>NEXT</b>, click <b>CREATE</b> and that's it. On the last page you will see your client ID and client secret.</p>
+        <p>If this method stops working you can always use <a href="https://rclone.org/drive/#making-your-own-client-id">this guide</a>.</p>
       </div>
     </div>
   </div>
