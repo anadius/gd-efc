@@ -1,0 +1,37 @@
+<?php
+
+{ENCRYPT_PHP_FUNCTION}
+
+function fail($reason, $status = 400) {
+    http_response_code($status);
+    echo json_encode(array('status' => 'error', 'reason' => $reason));
+    exit;
+}
+
+function success($data, $status = 200) {
+    http_response_code($status);
+    echo json_encode(array('status' => 'ok', 'data' => $data));
+    exit;
+}
+
+$method = $_SERVER['REQUEST_METHOD'];
+
+if($method === 'POST') {
+    header('Content-Type: application/json');
+
+    $requestData = json_decode(file_get_contents('php://input'), TRUE);
+    if($requestData === NULL) {
+        fail('Invalid json data');
+    }
+
+    try {
+        success(encrypt($requestData['folder'], '{KEY}'));
+    }
+    catch(Exception $e) {
+        fail($e.getMessage());
+    }
+}
+
+?>
+
+{ENCRYPT_HTML}
