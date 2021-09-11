@@ -48,7 +48,16 @@ function success($data, $status = 200) {
     exit;
 }
 
-function apiRequest($auth, $path, $options=array()) {
+function escapeRegEx($literal) {
+    return preg_quote($literal, '/');
+}
+
+function censorSensitiveData($text, $sensitive) {
+    $escaped = join('|', array_map('escapeRegEx', $sensitive));
+    return preg_replace('/(?:' . $escaped . ')/', '[censored]', $text);
+}
+
+function apiRequest($auth, $path, $sensitive, $options=array()) {
     $headersDict = isset($options['headers']) ? $options['headers'] : array();
     if(!isset($headersDict['Authorization'])) {
         $headersDict['Authorization'] = 'Bearer ' . $auth;
@@ -76,11 +85,11 @@ function apiRequest($auth, $path, $options=array()) {
 
     $responseData = json_decode($text, TRUE);
     if($responseData === NULL) {
-        throw new Exception($text);
+        throw new Exception(censorSensitiveData($text, $sensitive));
     }
 
     if(isset($responseData['error'])) {
-        throw new Exception($responseData['error']['message']);
+        throw new Exception(censorSensitiveData($responseData['error']['message'], $sensitive));
     }
 
     return $responseData;
@@ -91,7 +100,8 @@ $info = function($data) {
 
     $folderInfo = apiRequest(
         $data['auth'],
-        'files/' . $folderId . '?supportsAllDrives=true&fields=name,mimeType,shortcutDetails/*'
+        'files/' . $folderId . '?supportsAllDrives=true&fields=name,mimeType,shortcutDetails/*',
+        array($folderId)
     );
 
     // if it's a folder, grab the contents
@@ -101,7 +111,8 @@ $info = function($data) {
             'files?q="' . $folderId . '"+in+parents'
             . '&fields=nextPageToken,files(id,size,name,mimeType,md5Checksum,shortcutDetails/*)'
             . '&orderBy=name_natural&supportsAllDrives=true&includeItemsFromAllDrives=true&pageSize=100'
-            . (isset($data['pageToken']) ? '&pageToken=' . $data['pageToken'] : '')
+            . (isset($data['pageToken']) ? '&pageToken=' . $data['pageToken'] : ''),
+            array($folderId)
         );
     }
     // if it's shortcut/file, set notLoaded to true and grab the info later
@@ -144,7 +155,8 @@ $info = function($data) {
             }
             $fileInfo = apiRequest(
                 $data['auth'],
-                'files/' . $file['id'] . '?supportsAllDrives=true&fields=size,md5Checksum'
+                'files/' . $file['id'] . '?supportsAllDrives=true&fields=size,md5Checksum',
+                array($file['id'])
             );
             $fileInfo['id'] = $file['id'];
             $fileInfo['mimeType'] = $file['mimeType'];
@@ -167,6 +179,7 @@ function cloneOne($auth, $fileId, $folder) {
     return apiRequest(
         $auth,
         'files/' . $fileId . '/copy?supportsAllDrives=true',
+        array($fileId),
         array(
             'headers' => array(
                 'Content-Type' => 'application/json'

@@ -45,7 +45,16 @@ function success(data, status) {
   );
 }
 
-async function apiRequest(auth, path, options) {
+function escapeRegEx(literal) {
+  return literal.replace(/[-.*+?^${}()|[\]\\\/]/g, '\\$&');
+}
+
+function censorSensitiveData(text, sensitive) {
+  const escaped = sensitive.map(escapeRegEx).join('|');
+  return text.replace(new RegExp('(?:' + escaped + ')', 'g'), '[censored]');
+}
+
+async function apiRequest(auth, path, sensitive, options) {
   const opt = options || {};
   opt.headers = opt.headers || {};
   opt.headers.Authorization = opt.headers.Authorization || `Bearer ${auth}`;
@@ -59,11 +68,11 @@ async function apiRequest(auth, path, options) {
     responseData = JSON.parse(text);
   }
   catch(e) {
-    throw Error(text);
+    throw Error(censorSensitiveData(text, sensitive));
   }
 
   if(typeof responseData.error !== "undefined") {
-    throw Error(responseData.error.message);
+    throw Error(censorSensitiveData(responseData.error.message, sensitive));
   }
   return responseData;
 }
@@ -73,7 +82,8 @@ async function info(data) {
 
   const folderInfo = await apiRequest(
     data.auth,
-    `files/${folderId}?supportsAllDrives=true&fields=name,mimeType,shortcutDetails/*`
+    `files/${folderId}?supportsAllDrives=true&fields=name,mimeType,shortcutDetails/*`,
+    [folderId]
   );
 
   let folderContents;
@@ -84,7 +94,8 @@ async function info(data) {
       `files?q="${folderId}"+in+parents`
       + "&fields=nextPageToken,files(id,size,name,mimeType,md5Checksum,shortcutDetails/*)"
       + "&orderBy=name_natural&supportsAllDrives=true&includeItemsFromAllDrives=true&pageSize=100"
-      + (typeof data.pageToken !== "undefined" ? `&pageToken=${data.pageToken}` : '')
+      + (typeof data.pageToken !== "undefined" ? `&pageToken=${data.pageToken}` : ''),
+      [folderId]
     );
   }
   // if it's shortcut/file, set notLoaded to true and grab the info later
@@ -128,7 +139,8 @@ async function info(data) {
       }
       fileInfo = await this.apiRequest(
         data.auth,
-        `files/${file.id}?supportsAllDrives=true&fields=size,md5Checksum`
+        `files/${file.id}?supportsAllDrives=true&fields=size,md5Checksum`,
+        [file.id]
       );
       fileInfo.id = file.id;
       fileInfo.mimeType = file.mimeType;
@@ -151,6 +163,7 @@ async function cloneOne(auth, fileId, folder) {
   return apiRequest(
     auth,
     `files/${fileId}/copy?supportsAllDrives=true`,
+    [fileId],
     {
       headers: {
         "Content-Type": "application/json"
