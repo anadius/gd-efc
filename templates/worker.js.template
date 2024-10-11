@@ -21,10 +21,6 @@ const DEFAULT_HEADERS = Object.assign({
 }, CORS_HEADERS);
 const VERSION = 4;
 
-addEventListener("fetch", event => {
-  event.respondWith(handleRequest(event.request))
-});
-
 function fail(reason, status) {
   return new Response(
     JSON.stringify({status: "error", reason: reason, version: VERSION}),
@@ -193,41 +189,39 @@ async function clone(data) {
   return result;
 }
 {ENCRYPT_PARSER}
-/**
- * Respond to the request
- * @param {Request} request
- */
-async function handleRequest(request) {
-  if(request.method === "OPTIONS") {
-    return new Response(null, {status: 200, headers: CORS_HEADERS});
-  }{ENCRYPT_GET}
-  else if(request.method !== "POST") {
-    return fail("Method not allowed", 405);
-  }
+export default {
+  async fetch(request, env, ctx) {
+    if(request.method === "OPTIONS") {
+      return new Response(null, {status: 200, headers: CORS_HEADERS});
+    }{ENCRYPT_GET}
+    else if(request.method !== "POST") {
+      return fail("Method not allowed", 405);
+    }
 
-  let parser;
-  if(request.url.endsWith("/info")) {
-    parser = info;
-  }
-  else if(request.url.endsWith("/clone")) {
-    parser = clone;
-  }{ENCRYPT_POST}
-  else {
-    return fail("Page not found", 404);
-  }
+    let parser;
+    if(request.url.endsWith("/info")) {
+      parser = info;
+    }
+    else if(request.url.endsWith("/clone")) {
+      parser = clone;
+    }{ENCRYPT_POST}
+    else {
+      return fail("Page not found", 404);
+    }
 
-  let requestData;
-  try {
-    requestData = await request.json();
-  }
-  catch {
-    return fail("Invalid json data");
-  }
+    let requestData;
+    try {
+      requestData = await request.json();
+    }
+    catch {
+      return fail("Invalid json data");
+    }
 
-  try {
-    return success(await parser(requestData));
-  }
-  catch(e) {
-    return fail(e.toString());
-  }
-}
+    try {
+      return success(await parser(requestData));
+    }
+    catch(e) {
+      return fail(e.toString());
+    }
+  },
+};
